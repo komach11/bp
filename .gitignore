@@ -1,0 +1,64 @@
+# ═══════════════════════════════════════════════
+#  Unity
+# ═══════════════════════════════════════════════
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Unity 自动生成的解决方案与工程文件
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Unity 崩溃日志
+sysinfo.txt
+crashlytics-build.properties
+
+# 资源包与构建产物
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# ═══════════════════════════════════════════════
+#  文档解析中间产物（不入库）
+# ═══════════════════════════════════════════════
+doc1.json
+doc2.json
+doc1.txt
+doc2.txt
+dx.py
+extract.py
+
+# ═══════════════════════════════════════════════
+#  工作区私有数据
+# ═══════════════════════════════════════════════
+.workbuddy/
+
+# ═══════════════════════════════════════════════
+#  操作系统 / 编辑器
+# ═══════════════════════════════════════════════
+.DS_Store
+Thumbs.db
+desktop.ini
+.vs/
+.vscode/
+.idea/
+*.swp
+*~

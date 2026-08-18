@@ -1,0 +1,30 @@
+# 默认自动处理行尾：仓库内统一 LF，检出时按平台转换
+* text=auto eol=lf
+
+# 源码与文本
+*.cs      text diff=csharp
+*.md      text
+*.json    text
+*.txt     text
+*.shader  text
+*.asmdef  text
+
+# Unity 序列化资产（合并冲突交给 UnityYAMLMerge）
+*.unity        text merge=unityyamlmerge eol=lf
+*.prefab       text merge=unityyamlmerge eol=lf
+*.asset        text merge=unityyamlmerge eol=lf
+*.mat          text merge=unityyamlmerge eol=lf
+*.controller   text merge=unityyamlmerge eol=lf
+*.meta         text merge=unityyamlmerge eol=lf
+
+# 二进制，禁止行尾转换与 diff
+*.png   binary
+*.jpg   binary
+*.psd   binary
+*.fbx   binary
+*.wav   binary
+*.mp3   binary
+*.ogg   binary
+*.mp4   binary
+*.dll   binary
+*.unitypackage binary
