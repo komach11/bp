@@ -1,0 +1,113 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3110eea1dbb662845bcf84b2a971da91, type: 3}
+  m_Name: RoomConfig2D
+  m_EditorClassIdentifier: 
+  introDuration: 3
+  searchDuration: 45
+  collapseDuration: 3.2
+  transitionDuration: 1.6
+  urgentThreshold: 12
+  moveSpeed: 5.5
+  turnSpeed: 900
+  moveSmoothing: 0.07
+  staggerDuration: 0.8
+  jumpVelocity: 7.2
+  gravity: 22
+  coyoteTime: 0.12
+  jumpBuffer: 0.12
+  airControl: 0.65
+  groundCheckDistance: 0.25
+  randomCollapseCount: 20
+  firstCollapseAt: 0.25
+  lastCollapseAt: 0.85
+  crackWarningTime: 1.8
+  collapseDropDepth: 6
+  collapseSafeRadius: 2.2
+  pitfallDepth: 2.5
+  pitfallDuration: 0.9
+  pitfallStagger: 1.2
+  pitfallItemLoss: 1
+  inventoryCapacity: 2
+  searchTime: 2.4
+  searchRange: 1.7
+  containerCooldown: 1.3
+  containerYield: 2
+  elbowRange: 1.6
+  elbowAngle: 75
+  elbowCooldown: 0.85
+  elbowWindup: 0.12
+  elbowKnockback: 7
+  elbowKnocksOutItem: 1
+  elbowCanKnockOffLedge: 1
+  itemPopForce: 5
+  droppedItemPickupDelay: 0.4
+  alarmPeriodNormal: 2.4
+  alarmPeriodUrgent: 0.45
+  alarmIntensity: 2.6
+  debrisInterval: 1.4
+  debrisIntervalUrgent: 0.35
+  debrisPerBurst: 2
+  screenShakeInterval: 6
+  screenShakeIntervalUrgent: 1.8
+  screenShakeAmount: 0.28
+  screenShakeDuration: 0.22
+  cameraPitch: 50
+  orthographicSize: 11.5
+  autoFrame: 1
+  minOrthoSize: 10
+  maxOrthoSize: 16
+  cameraSmoothTime: 0.32
+  aiDecisionInterval: 0.35
+  aiAggroRange: 2.4
+  aiAggressiveness: 0.45
+  aiCanJump: 1
+  aiPitAvoidDistance: 1.6
+  itemPools:
+  - theme: 0
+    items:
+    - {fileID: 11400000, guid: 5c51fe8011e801645a06490bf043dc40, type: 2}
+    - {fileID: 11400000, guid: e90a1ca5f07717748b41bd2852e380fc, type: 2}
+    - {fileID: 11400000, guid: 668284425f7982c448edd0837ff14a75, type: 2}
+    - {fileID: 11400000, guid: 19ecabc779d62c84ca0af2c8746dba7c, type: 2}
+    - {fileID: 11400000, guid: 7bfc5b2a3e330cb48b187fe002393abb, type: 2}
+    - {fileID: 11400000, guid: 1f7df81334c4e184d8e8d92ca1fe90e6, type: 2}
+  - theme: 1
+    items:
+    - {fileID: 11400000, guid: 9593817fa0f39774ba9f6cdd84e2dc2c, type: 2}
+    - {fileID: 11400000, guid: 24865c384cd422d42b63f2d065718767, type: 2}
+    - {fileID: 11400000, guid: 590d405c0dc9c3f4995b4a3b07fc71ed, type: 2}
+    - {fileID: 11400000, guid: ed2b5dcfd926efb48a5aaaa29bf8542e, type: 2}
+    - {fileID: 11400000, guid: 815b78b9e2c084b448a7d88f04d44c3b, type: 2}
+    - {fileID: 11400000, guid: 6dc1e13e32322c84b9f93aa646eb5b11, type: 2}
+    - {fileID: 11400000, guid: ca3f0357debf73a4a8ffd9ad97be1a27, type: 2}
+    - {fileID: 11400000, guid: e646dec40ae607d44b8aef2da2f3163e, type: 2}
+    - {fileID: 11400000, guid: 06a4272ad893e8c4a87542875002257a, type: 2}
+  - theme: 2
+    items:
+    - {fileID: 11400000, guid: c3ea4f2ca1fbc4844b2496eb840d1a8c, type: 2}
+    - {fileID: 11400000, guid: e3475ec8486b01348ad32c33bc8e15d8, type: 2}
+    - {fileID: 11400000, guid: ab7651d13623fc74ba3a927bd19cc44f, type: 2}
+    - {fileID: 11400000, guid: 6541814278113954ba13d7980b5bd81e, type: 2}
+    - {fileID: 11400000, guid: 18db6122fff4b53488ab37f5abce7e0e, type: 2}
+    - {fileID: 11400000, guid: 475f7745d02fcf94ba77f2135cd4f206, type: 2}
+  characterPrefabs:
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  shadowMaterial: {fileID: 0}
+  containerPrefab: {fileID: 0}
+  debrisPrefab: {fileID: 0}
+  floorTilePrefab: {fileID: 0}
+  floorMatSolid: {fileID: 0}
+  floorMatCracking: {fileID: 0}

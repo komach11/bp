@@ -1,104 +1,57 @@
-# BUG 派对 · 密室搜刮环节
+# BUG派对 · 密室搜刮
 
-派对游戏《BUG 派对》的密室搜刮环节原型，以及 3 分钟 PV 的 AI 视频提示词全案。
+Unity **2022.3.62f3** 工程。仓库根 = Unity 工程根，可直接用 Unity Hub 打开本目录。
 
-**故事设定**：四名实习生争夺唯一的转正名额，吃下 debug 胶囊进入游戏内部。每轮玩法开始前，玩家被送进一间被 Bug 侵蚀的会议室随机搜刮道具，期间可以推搡、肘击彼此，打断对手的搜索进程或击落其已收集的道具。
+## 目录结构
 
----
-
-## 目录说明
-
-仓库里有**三套并行的 Unity 工程**，是同一个环节的三次方案迭代。三者命名空间与目录互不冲突，可同时存在于一个 Unity 项目中。
-
-| 目录 | 方案 | 视角 | 状态 |
-|---|---|---|---|
-| **`BugParty_2D/`** | 2D 俯视 + 高度地形 | 正交投影 70° 俯角 | ✅ **最终采用** |
-| `BugParty_SearchRoom/` | 俯视角 v1 | 斜俯视 | 归档参考 |
-| `BugParty_FPS/` | 第一人称搜刮 | FPS | 归档参考 |
-
-> **从 `BugParty_2D/` 开始。** 另外两个目录保留是为了对比设计取舍，不建议在其上继续开发。
-
-### 为什么最终选 2D 俯视
-
-- **风格统一**：与另外三个玩法关卡的美术方向一致
-- **FPS 方案的硬伤**：第一人称直接否掉了「本地四人同屏」——一块屏幕无法给四个人各一个第一人称画面，只能走 1 真人 + 3 AI 或联网四人
-- 2D 俯视保留了同屏多人的可能性，同时通过正交投影 + 70° 俯角保住了高度可读性
-
----
-
-## 快速上手（2D 版）
-
-1. 新建或打开 Unity **2022.3.x** 项目
-2. 把 `BugParty_2D/Assets/BugParty2D` 拖进项目的 `Assets/` 下
-3. 等编译完成
-4. 菜单 **BugParty2D ▸ Build Room Scene**（或 **Tools ▸ BugParty2D ▸ Build Room Scene**）
-5. 按 **Play**
-
-不需要拖引用、建 Prefab 或导入美术资源——房间、地板网格、容器、玩家、相机、灯光、HUD 与道具配置全部自动生成。
-
-### 操作
-
-| 按键 | 动作 |
-|---|---|
-| `WASD` | 移动 |
-| `Space` | 跳跃（可跳上会议桌） |
-| `J` | 按住搜索 |
-| `K` | 肘击 |
-| `R` | 重开 |
-
-默认 1 名真人（红方）+ 3 名 AI。
-
-> 菜单栏找不到 `BugParty2D`？点 **Tools ▸ BugParty2D ▸ 自检（确认脚本已加载）** 验证脚本是否编译成功。
-
-详细的调参对照表、验收清单与架构说明见 [`BugParty_2D/README.md`](BugParty_2D/README.md)。
-
----
-
-## 2D 版的核心设计
-
-**场景 34×26**，地板拆成 **17×13 = 221 块**独立可塌陷的方格，块间留缝隙——玩家要能看清边界才能预判哪块在开裂。
-
-**三级高度地形**，跳跃高度经物理公式验证（v=7.2, g=22 → 最大跳高 1.178 m）：
-
-| 层级 | 高度 | 能否直接跳上 |
-|---|---|---|
-| 矮柜 / 椅子 | 0.55 | 轻松 |
-| 中央会议桌 | 0.95 | 需正常跳 |
-| 四角高台 | 1.45 | **不能，必须两段跳** |
-
-高台跳不上去是刻意的——那里放着稀有度最高的容器。跳跃因此从一个动作变成一条收益路线。
-
-**地板塌陷四态状态机**：`Solid → Cracking(1.8s 预警) → Collapsed → Falling`。预警阶段必须存在，否则玩家会觉得被阴；有预警才能形成「快跑离开」的正向操作。
-
-**终局全塌陷**：以房间中心为震中波浪式塌陷，四人翻滚下坠，道具通过 `CarryOverData` 静态类传递到下一关。这段可以直接当作三个玩法关卡之间的统一转场。
-
----
-
-## 接音效与特效
-
-订阅事件即可，不需要改动玩法脚本：
-
-```csharp
-RoomEvents.OnElbowHit += (attacker, victim) => {
-    AudioSource.PlayClipAtPoint(elbowSfx, victim.transform.position);
-    Instantiate(impactVfx, victim.transform.position + Vector3.up, Quaternion.identity);
-};
+```
+密室/
+├── Assets/
+│   ├── BugParty2D/          ← 主玩法：2D 俯视密室搜刮
+│   │   ├── Config/Items/    道具定义（ScriptableObject，22 项）
+│   │   ├── Editor/          建场工具、资源导入后处理
+│   │   └── Scripts/         Config / Core / Player / UI / World
+│   ├── New Folder/          地形 fbx 素材（land_*.fbx）
+│   └── Scenes/
+├── ProjectSettings/         Unity 工程设置（入库，团队一致）
+├── Packages/                包依赖清单（入库）
+├── _Docs/                   策划与 PV 文档
+└── _Archive/                早期原型，仅供参考，勿用于开发
+    ├── BugParty_FPS/        第一人称版本
+    └── BugParty_SearchRoom/ 初版密室搜索
 ```
 
-`RoomEvents` 暴露了 17 个事件，覆盖搜索、肘击、跳跃落地、地板开裂/塌陷、阶段切换、倒计时等全部时机。
+## 快速上手
 
----
+1. Unity Hub → Add project from disk → 选本目录
+2. 菜单栏 `BugParty2D ▸ Build Room Scene` 一键建场
+3. 若菜单未出现，用 `Tools ▸ BugParty2D ▸ 自检` 确认脚本已编译
 
-## PV 提示词
+## 操作
 
-[`pv_prompt_v2.md`](pv_prompt_v2.md) 是 3 分钟 PV 的完整 AI 视频提示词全案，19 章、41 个镜头的逐镜提示词，含角色一致性锚点表、通用负面提示词、尖叫度设计清单、旁白台词与音效清单。
+| 键位 | 行为 |
+|---|---|
+| WASD | 移动 |
+| 空格 | 跳跃 |
+| E / 长按 | 搜索容器 |
+| 鼠标左键 | 肘击 |
 
-> ⚠️ 该文档写于 2D 方案确定之前，其中搜索段（第 7 / 9 / 11 章）的分镜仍按早期设定描述，需按最终的 2D 俯视方案与终局塌陷转场更新。
+## 核心设计
 
----
+- `RoomManager` 单例驱动房间生命周期，通过 `RoomEvents` 静态事件广播状态
+- `PlayerActor` 为行为载体，`HumanBrain` / `AIBrain` 分别注入玩家与 AI 决策
+- `PlayerAnimatorBridge` 桥接动画层，读 `PlayerActor` 的速度/搜索状态驱动 Animator
+- `RoomAudioVfx` 音效特效总线，槽位留空亦可运行，待美术资源到位再填
 
-## 环境
+## 美术资源接入
 
-- Unity **2022.3.62f3**
-- 纯代码生成场景，无外部资源依赖
-- 使用 `Rigidbody.drag` / `CharacterController`，若升级到 Unity 6 需将 `drag` 改为 `linearDamping`
+见 `_Docs/美术资源接入指南.md`。要点：`RoomConfig` 上的 `characterPrefabs` 等槽位留空时回退到程序生成的占位体，填入后建场工具自动替换且挂点结构保持一致。
+
+## 远端
+
+| remote | 地址 | 分支 |
+|---|---|---|
+| `origin` | `git@github.com:komach11/bp.git` | `main` |
+| `woa` | `https://git.woa.com/yitianchen/minigame.git` | `meetingroom` |
+
+`woa` 与 `origin` 是两个独立仓库，无共同祖先。推 `woa` 需用 HTTPS（SSH 公钥未注册），提交者身份须为 `ilyayu`。

@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c1157a80f277fe4bafafdc1691c5403, type: 3}
+  m_Name: Item_net_small
+  m_EditorClassIdentifier: 
+  displayName: "\u5C0F\u6E14\u7F51"
+  itemId: net_small
+  category: 0
+  lootValue: 200
+  worldPrefab: {fileID: 0}
+  placeholderColor: {r: 0.55, g: 0.85, b: 0.95, a: 1}
+  placeholderSize: {x: 0.4, y: 0.4, z: 0.4}
+  spawnWeight: 1.4
+  isRare: 0
+  effectSummary: "\u4E00\u6B21\u4E00\u6761\u9C7C\uFF0C\u8BFB\u67615\u79D2"
