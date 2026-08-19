@@ -208,29 +208,75 @@ namespace BugParty.TopDown2D
         }
 
         // ═══════════════════════════════════════════════
-        [Header("═══ 美术资源替换（留空则用程序生成的占位体）═══")]
+        [Header("═══ 美术资源 ═══")]
 
-        [Tooltip("★角色模型。四个槽位按 红/蓝/黄/绿 顺序填。\n" +
-                 "要求：Prefab 根节点朝 +Z，脚底在 y=0，身高约 1.5 米。\n" +
-                 "填了之后建场工具会用它替换胶囊体，并自动挂 Animator（若有）。")]
-        public GameObject[] characterPrefabs = new GameObject[4];
+        [Tooltip("★全部美术槽位已迁移到独立的 RoomArtConfig。\n" +
+                 "这样策划改数值、美术填模型时不会编辑同一个 .asset，\n" +
+                 "避免 YAML 冲突损坏 GUID 引用。\n\n" +
+                 "Assets ▸ Create ▸ BugParty2D ▸ Room Art Config 创建后拖到这里。\n" +
+                 "留空则全部使用程序生成的占位体。")]
+        public RoomArtConfig art;
 
-        [Tooltip("落地阴影贴图。留空则用纯黑半透明方片。")]
-        public Material shadowMaterial;
+        // ── 旧版字段，仅用于一次性自动迁移，勿再使用 ──
+        [SerializeField, HideInInspector] GameObject[] characterPrefabs;
+        [SerializeField, HideInInspector] Material shadowMaterial;
+        [SerializeField, HideInInspector] GameObject containerPrefab;
+        [SerializeField, HideInInspector] GameObject debrisPrefab;
+        [SerializeField, HideInInspector] GameObject floorTilePrefab;
+        [SerializeField, HideInInspector] Material floorMatSolid;
+        [SerializeField, HideInInspector] Material floorMatCracking;
 
-        [Tooltip("搜索容器模型。留空用彩色方块。")]
-        public GameObject containerPrefab;
+        /// <summary>
+        /// 把旧版散落在 RoomConfig 上的美术字段搬进 RoomArtConfig。
+        /// 返回是否发生迁移。建场时调用一次即可。
+        /// </summary>
+        public bool MigrateLegacyArtFields()
+        {
+            if (art == null) return false;
+            bool moved = false;
 
-        [Tooltip("天花板碎片模型。留空用小方块。")]
-        public GameObject debrisPrefab;
-
-        [Tooltip("地板砖模型。留空用扁平方块。\n注意：必须是 1×1 单位大小，建场时会按格子尺寸缩放。")]
-        public GameObject floorTilePrefab;
-
-        [Header("═══ 地板材质（按状态切换）═══")]
-        public Material floorMatSolid;
-        [Tooltip("开裂预警状态。留空则用代码染红。")]
-        public Material floorMatCracking;
+            if (characterPrefabs != null)
+            {
+                for (int i = 0; i < characterPrefabs.Length && i < 4; i++)
+                {
+                    if (characterPrefabs[i] == null) continue;
+                    var slot = art.GetCharacterArt(i);
+                    if (slot != null && slot.prefab == null) { slot.prefab = characterPrefabs[i]; moved = true; }
+                }
+                characterPrefabs = null;
+            }
+            if (shadowMaterial != null)
+            {
+                if (art.shadowMaterial == null) { art.shadowMaterial = shadowMaterial; moved = true; }
+                shadowMaterial = null;
+            }
+            if (containerPrefab != null)
+            {
+                if (art.containerDefault.prefab == null) { art.containerDefault.prefab = containerPrefab; moved = true; }
+                containerPrefab = null;
+            }
+            if (debrisPrefab != null)
+            {
+                if (art.debris.prefab == null) { art.debris.prefab = debrisPrefab; moved = true; }
+                debrisPrefab = null;
+            }
+            if (floorTilePrefab != null)
+            {
+                if (art.floorTile.prefab == null) { art.floorTile.prefab = floorTilePrefab; moved = true; }
+                floorTilePrefab = null;
+            }
+            if (floorMatSolid != null)
+            {
+                if (art.floorMatSolid == null) { art.floorMatSolid = floorMatSolid; moved = true; }
+                floorMatSolid = null;
+            }
+            if (floorMatCracking != null)
+            {
+                if (art.floorMatCracking == null) { art.floorMatCracking = floorMatCracking; moved = true; }
+                floorMatCracking = null;
+            }
+            return moved;
+        }
 
         public ItemDefinition RollItem(RoomTheme theme)
         {

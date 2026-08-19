@@ -21,9 +21,9 @@ namespace BugParty.TopDown2D
         float _phase;
         float _nextGlitch;
         float _glitchEnd;
-        Renderer _renderer;
-        Color _baseColor;
-        bool _hasColor;
+        Renderer[] _renderers;
+        Color[] _baseColors;
+        bool[] _hasColor;
         bool _glitching;
 
         void Start()
@@ -32,12 +32,21 @@ namespace BugParty.TopDown2D
             _phase = Random.Range(0f, Mathf.PI * 2f);
             _nextGlitch = Time.time + Random.Range(0.5f, glitchInterval);
 
-            _renderer = GetComponentInChildren<Renderer>();
-            if (_renderer != null)
+            // ★收集全部子 Renderer，而非只取第一个。
+            // 换成美术模型后物件常由多个 mesh 组成，只改第一个会让闪烁几乎看不见。
+            var found = GetComponentsInChildren<Renderer>(true);
+            _renderers = found;
+            _baseColors = new Color[found.Length];
+            _hasColor = new bool[found.Length];
+
+            for (int i = 0; i < found.Length; i++)
             {
-                var m = _renderer.material;
-                if (m.HasProperty("_BaseColor")) { _baseColor = m.GetColor("_BaseColor"); _hasColor = true; }
-                else if (m.HasProperty("_Color")) { _baseColor = m.GetColor("_Color"); _hasColor = true; }
+                var r = found[i];
+                if (r == null || r is ParticleSystemRenderer) continue;
+                if (!r.enabled) continue;          // 跳过被隐藏的碰撞盒
+                var m = r.material;                // 取 material 会自动实例化，不污染共享材质
+                if (m.HasProperty("_BaseColor")) { _baseColors[i] = m.GetColor("_BaseColor"); _hasColor[i] = true; }
+                else if (m.HasProperty("_Color")) { _baseColors[i] = m.GetColor("_Color"); _hasColor[i] = true; }
             }
         }
 
@@ -76,11 +85,19 @@ namespace BugParty.TopDown2D
 
         void ApplyGlitchColor(bool on)
         {
-            if (_renderer == null || !_hasColor) return;
-            var m = _renderer.material;
-            var c = on ? Color.Lerp(_baseColor, glitchColor, 0.75f) : _baseColor;
-            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
-            if (m.HasProperty("_Color")) m.SetColor("_Color", c);
+            if (_renderers == null) return;
+            for (int i = 0; i < _renderers.Length; i++)
+            {
+                if (!_hasColor[i]) continue;
+                var r = _renderers[i];
+                if (r == null) continue;
+                var m = r.material;
+                // ★用 Lerp 混合而非直接覆盖：带贴图的模型也能看出闪烁，
+                //   同时保留各自的原始底色（多 mesh 物件不会被刷成同一个色）
+                var c = on ? Color.Lerp(_baseColors[i], glitchColor, 0.75f) : _baseColors[i];
+                if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+                if (m.HasProperty("_Color")) m.SetColor("_Color", c);
+            }
         }
     }
 }

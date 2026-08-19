@@ -19,6 +19,7 @@ namespace BugParty.TopDown2D.EditorTools
         const string ConfigFolder = "Assets/BugParty2D/Config";
         const string ItemFolder = "Assets/BugParty2D/Config/Items";
         const string ConfigPath = ConfigFolder + "/RoomConfig2D.asset";
+        const string ArtConfigPath = ConfigFolder + "/RoomArtConfig2D.asset";
 
         // ★场景尺寸：比之前大得多
         const int GridCols = 17;
@@ -57,18 +58,27 @@ namespace BugParty.TopDown2D.EditorTools
 
             var config = EnsureConfigAssets();
 
+            // 旧版把美术字段直接放在 RoomConfig 上，这里一次性搬到 RoomArtConfig
+            if (config != null && config.MigrateLegacyArtFields())
+            {
+                EditorUtility.SetDirty(config);
+                if (config.art != null) EditorUtility.SetDirty(config.art);
+                AssetDatabase.SaveAssets();
+                Debug.Log("[Room2D] 已把旧版美术字段迁移到 RoomArtConfig。");
+            }
+
             var old = GameObject.Find("=== Room2D ===");
             if (old != null) Object.DestroyImmediate(old);
 
             var root = new GameObject("=== Room2D ===");
             Undo.RegisterCreatedObjectUndo(root, "Build Room2D");
 
-            var grid = BuildFloorGrid(root.transform);
+            var grid = BuildFloorGrid(root.transform, config);
             BuildWalls(root.transform);
             var door = BuildDoor(root.transform);
-            var platforms = BuildTerrain(root.transform);
-            var containers = BuildContainers(root.transform, platforms);
-            BuildBugProps(root.transform);
+            var platforms = BuildTerrain(root.transform, config);
+            var containers = BuildContainers(root.transform, platforms, config);
+            BuildBugProps(root.transform, config);
             var alarm = BuildAlarmSystem(root.transform);
             var debris = BuildDebrisSpawner(root.transform);
             var players = BuildPlayers(root.transform, config);
@@ -147,6 +157,36 @@ namespace BugParty.TopDown2D.EditorTools
             {
                 config = ScriptableObject.CreateInstance<RoomConfig>();
                 AssetDatabase.CreateAsset(config, ConfigPath);
+            }
+
+            // ★美术配置独立成资产，让策划与美术改不同文件
+            if (config.art == null)
+            {
+                var art = AssetDatabase.LoadAssetAtPath<RoomArtConfig>(ArtConfigPath);
+                if (art == null)
+                {
+                    art = ScriptableObject.CreateInstance<RoomArtConfig>();
+                    AssetDatabase.CreateAsset(art, ArtConfigPath);
+                    Debug.Log("[Room2D] 已创建美术配置：" + ArtConfigPath +
+                              "\n把家具/角色模型拖到它的槽位上即可替换外观，留空则用占位体。");
+                }
+                config.art = art;
+                EditorUtility.SetDirty(config);
+            }
+
+            // 预填容器名，美术照名字拖模型即可（值留空不影响运行）
+            if (config.art != null && (config.art.containerOverrides == null
+                || config.art.containerOverrides.Count == 0))
+            {
+                config.art.containerOverrides = new List<NamedArtSlot>();
+                foreach (var n in new[]
+                {
+                    "文件柜","饮水机","投影仪箱","打印机","纸箱堆","垃圾桶","杂物架","工具箱",
+                    "桌上笔记本","桌上文件夹",
+                    "顶柜保险箱","顶柜档案盒","顶柜服务器","顶柜工具包",
+                })
+                    config.art.containerOverrides.Add(new NamedArtSlot { key = n });
+                EditorUtility.SetDirty(config.art);
             }
 
             if (isNew || config.itemPools == null || config.itemPools.Count == 0)
@@ -260,10 +300,12 @@ namespace BugParty.TopDown2D.EditorTools
         //  ★地板网格（可塌陷）
         // ══════════════════════════════════════════════
 
-        static FloorGrid BuildFloorGrid(Transform root)
+        static FloorGrid BuildFloorGrid(Transform root, RoomConfig config)
         {
             var go = NewChild(root, "FloorGrid");
             var grid = go.AddComponent<FloorGrid>();
+            var art = config != null ? config.art : null;
+            var tileArt = art != null ? art.floorTile : null;
 
             grid.columns = GridCols;
             grid.rows = GridRows;
@@ -283,16 +325,23 @@ namespace BugParty.TopDown2D.EditorTools
                 for (int z = 0; z < GridRows; z++)
                 {
                     var pos = new Vector3(ox + x * TileSize, -0.15f, oz + z * TileSize);
+                    var col = (x + z) % 2 == 0 ? colA : colB;
+                    var size = new Vector3(TileSize * 0.96f, 0.3f, TileSize * 0.96f);
 
                     // 留一点缝隙，让每块地板的边界可见 —— 玩家才能预判哪块会塌
-                    var tileGo = Cube(go, $"Tile_{x}_{z}", pos,
-                        new Vector3(TileSize * 0.96f, 0.3f, TileSize * 0.96f),
-                        (x + z) % 2 == 0 ? colA : colB);
+                    var tileGo = ArtResolver.BuildSolid(
+                        tileArt, go.transform, $"Tile_{x}_{z}", pos, size, col, out var tr);
 
                     var tile = tileGo.AddComponent<FloorTile>();
                     tile.gridPos = new Vector2Int(x, z);
-                    tile.tileRenderer = tileGo.GetComponent<Renderer>();
-                    tile.solidColor = (x + z) % 2 == 0 ? colA : colB;
+                    // ★用美术模型时碰撞盒 Renderer 已关闭，须指向真正可见的 Renderer，
+                    //   否则塌陷预警的染红看不见
+                    tile.tileRenderer = tr != null ? tr : tileGo.GetComponent<Renderer>();
+                    tile.solidColor = col;
+
+                    // 材质可被美术替换
+                    if (art != null && art.floorMatSolid != null && tile.tileRenderer != null)
+                        tile.tileRenderer.sharedMaterial = art.floorMatSolid;
 
                     // 四角出生区受保护，不随机塌陷（终局仍会塌）
                     bool nearCorner =
@@ -367,39 +416,46 @@ namespace BugParty.TopDown2D.EditorTools
             public float topY;
         }
 
-        static List<PlatformInfo> BuildTerrain(Transform root)
+        static List<PlatformInfo> BuildTerrain(Transform root, RoomConfig config)
         {
             var g = NewChild(root, "Terrain");
             var list = new List<PlatformInfo>();
+            var art = config != null ? config.art : null;
 
             var deskCol = new Color(0.52f, 0.38f, 0.26f);
             var cabCol = new Color(0.34f, 0.42f, 0.48f);
             var highCol = new Color(0.44f, 0.36f, 0.52f);
             var rampCol = new Color(0.38f, 0.40f, 0.44f);
 
+            var deskArt = art != null ? art.desk : null;
+            var chairArt = art != null ? art.chair : null;
+            var cabArt = art != null ? art.cabinet : null;
+            var highArt = art != null ? art.highPlatform : null;
+            var rampArt = art != null ? art.rampStep : null;
+
             // ── ★中央长会议桌：本场景的地形核心 ──
             // 用两块拼成 L 形，制造"桌上追逐"的空间
             list.Add(AddPlatform(g, "MeetingDesk_Main",
-                new Vector3(0f, 0f, 1.5f), new Vector3(11f, H_MID, 4f), deskCol));
+                new Vector3(0f, 0f, 1.5f), new Vector3(11f, H_MID, 4f), deskCol, deskArt, art));
             list.Add(AddPlatform(g, "MeetingDesk_Wing",
-                new Vector3(4.5f, 0f, -2.5f), new Vector3(4f, H_MID, 4f), deskCol));
+                new Vector3(4.5f, 0f, -2.5f), new Vector3(4f, H_MID, 4f), deskCol, deskArt, art));
 
             // 桌边的椅子当踏板，让上桌有多条路线
             list.Add(AddPlatform(g, "Step_Chair_A",
-                new Vector3(-6.5f, 0f, 1.5f), new Vector3(1.6f, H_LOW, 1.6f), cabCol));
+                new Vector3(-6.5f, 0f, 1.5f), new Vector3(1.6f, H_LOW, 1.6f), cabCol, chairArt, art));
             list.Add(AddPlatform(g, "Step_Chair_B",
-                new Vector3(6.5f, 0f, 3.2f), new Vector3(1.6f, H_LOW, 1.6f), cabCol));
+                new Vector3(6.5f, 0f, 3.2f), new Vector3(1.6f, H_LOW, 1.6f), cabCol, chairArt, art));
             list.Add(AddPlatform(g, "Step_Chair_C",
-                new Vector3(1.5f, 0f, -4.6f), new Vector3(1.6f, H_LOW, 1.6f), cabCol));
+                new Vector3(1.5f, 0f, -4.6f), new Vector3(1.6f, H_LOW, 1.6f), cabCol, chairArt, art));
 
             // ── 两侧矮柜排：可以跳上去走"高架路线" ──
             for (int i = 0; i < 3; i++)
             {
                 float z = -6f + i * 5.5f;
                 list.Add(AddPlatform(g, $"Cabinet_W_{i}",
-                    new Vector3(-12.5f, 0f, z), new Vector3(2.4f, H_LOW, 3.4f), cabCol));
+                    new Vector3(-12.5f, 0f, z), new Vector3(2.4f, H_LOW, 3.4f), cabCol, cabArt, art));
                 list.Add(AddPlatform(g, $"Cabinet_E_{i}",
-                    new Vector3(12.5f, 0f, z), new Vector3(2.4f, H_LOW, 3.4f), cabCol));
+                    new Vector3(12.5f, 0f, z), new Vector3(2.4f, H_LOW, 3.4f), cabCol, cabArt, art));
             }
 
             // ── ★四角高台：需要两段跳（先矮柜再高台），回报是稀有道具 ──
@@ -416,38 +472,50 @@ namespace BugParty.TopDown2D.EditorTools
                 var stepPos = highSpots[i] + new Vector3(
                     highSpots[i].x > 0 ? -2.6f : 2.6f, 0f, 0f);
                 list.Add(AddPlatform(g, $"HighStep_{i}",
-                    stepPos, new Vector3(2.2f, H_LOW, 2.2f), cabCol));
+                    stepPos, new Vector3(2.2f, H_LOW, 2.2f), cabCol, cabArt, art));
 
                 list.Add(AddPlatform(g, $"HighPlatform_{i}",
-                    highSpots[i], new Vector3(4f, H_HIGH, 4f), highCol));
+                    highSpots[i], new Vector3(4f, H_HIGH, 4f), highCol, highArt, art));
             }
 
             // ── 斜坡：不跳也能上矮柜，给不熟练的玩家留路 ──
-            AddRamp(g, "Ramp_W", new Vector3(-9.5f, 0f, 8.5f), H_LOW, rampCol, false);
-            AddRamp(g, "Ramp_E", new Vector3(9.5f, 0f, -8.5f), H_LOW, rampCol, true);
+            AddRamp(g, "Ramp_W", new Vector3(-9.5f, 0f, 8.5f), H_LOW, rampCol, false, rampArt);
+            AddRamp(g, "Ramp_E", new Vector3(9.5f, 0f, -8.5f), H_LOW, rampCol, true, rampArt);
 
             return list;
         }
 
         static PlatformInfo AddPlatform(
-            GameObject parent, string name, Vector3 basePos, Vector3 size, Color col)
+            GameObject parent, string name, Vector3 basePos, Vector3 size, Color col,
+            ArtSlot art = null, RoomArtConfig artCfg = null)
         {
             // basePos 是地面位置，方块中心要抬到 size.y/2
             var pos = new Vector3(basePos.x, size.y * 0.5f, basePos.z);
-            var go = Cube(parent, name, pos, size, col);
 
-            // 顶面加一层略亮的贴面，2D 俯视下更容易识别"这是可以站的平台"
-            var top = Cube(go, "TopFace", new Vector3(0f, 0.51f, 0f),
-                new Vector3(0.94f, 0.06f, 0.94f),
-                Color.Lerp(col, Color.white, 0.22f));
-            KillCollider(top);
+            // ★碰撞盒尺寸严格等于 size，所以 topY 与跳跃手感完全不受换模型影响
+            var go = ArtResolver.BuildSolid(
+                art, parent.transform, name, pos, size, col, out _);
+
+            bool hasArt = art != null && art.HasArt;
+            bool keepTop = artCfg == null || artCfg.keepPlatformTopFace;
+
+            // 顶面加一层略亮的贴面，2D 俯视下更容易识别"这是可以站的平台"。
+            // 用了美术模型且配置里关掉时就不再加。
+            if (!hasArt || keepTop)
+            {
+                var top = Cube(go, "TopFace", new Vector3(0f, 0.51f, 0f),
+                    new Vector3(0.94f, 0.06f, 0.94f),
+                    Color.Lerp(col, Color.white, 0.22f));
+                KillCollider(top);
+            }
 
             return new PlatformInfo { name = name, center = basePos, topY = size.y };
         }
 
         /// <summary>用几级台阶模拟斜坡。CharacterController 的 stepOffset 能自动爬上去。</summary>
         static void AddRamp(
-            GameObject parent, string name, Vector3 basePos, float targetH, Color col, bool flip)
+            GameObject parent, string name, Vector3 basePos, float targetH, Color col, bool flip,
+            ArtSlot art = null)
         {
             const int steps = 4;
             var g = NewChild(parent, name);
@@ -457,7 +525,8 @@ namespace BugParty.TopDown2D.EditorTools
                 float h = targetH * (i + 1) / steps;
                 float offset = (flip ? -1f : 1f) * (i * 0.8f);
                 var pos = new Vector3(basePos.x + offset, h * 0.5f, basePos.z);
-                Cube(g, $"{name}_Step{i}", pos, new Vector3(0.8f, h, 3f), col);
+                var size = new Vector3(0.8f, h, 3f);
+                ArtResolver.BuildSolid(art, g.transform, $"{name}_Step{i}", pos, size, col, out _);
             }
         }
 
@@ -466,10 +535,11 @@ namespace BugParty.TopDown2D.EditorTools
         // ══════════════════════════════════════════════
 
         static List<SearchContainer> BuildContainers(
-            Transform root, List<PlatformInfo> platforms)
+            Transform root, List<PlatformInfo> platforms, RoomConfig config)
         {
             var g = NewChild(root, "Containers");
             var list = new List<SearchContainer>();
+            var art = config != null ? config.art : null;
 
             // ── 地面容器（8 个）──
             var groundSpecs = new[]
@@ -487,12 +557,14 @@ namespace BugParty.TopDown2D.EditorTools
             for (int i = 0; i < groundSpecs.Length; i++)
             {
                 var s = groundSpecs[i];
-                var go = Cube(g, "Box_" + s.name,
+                var slot = art != null ? art.GetContainerArt(s.name) : null;
+                var go = ArtResolver.BuildSolid(
+                    slot, g.transform, "Box_" + s.name,
                     new Vector3(s.pos.x, 0.5f, s.pos.z),
                     new Vector3(1.1f, 1.0f, 1.0f),
-                    new Color(0.55f, 0.44f, 0.32f));
+                    new Color(0.55f, 0.44f, 0.32f), out var gr);
 
-                var sc = AttachContainer(go, s.name, s.rarity, false, 1.0f);
+                var sc = AttachContainer(go, s.name, s.rarity, false, 1.0f, gr);
                 list.Add(sc);
             }
 
@@ -505,12 +577,14 @@ namespace BugParty.TopDown2D.EditorTools
             for (int i = 0; i < deskSpecs.Length; i++)
             {
                 var s = deskSpecs[i];
-                var go = Cube(g, "Box_" + s.name,
+                var slot = art != null ? art.GetContainerArt(s.name) : null;
+                var go = ArtResolver.BuildSolid(
+                    slot, g.transform, "Box_" + s.name,
                     new Vector3(s.pos.x, s.pos.y + 0.32f, s.pos.z),
                     new Vector3(0.9f, 0.5f, 0.7f),
-                    new Color(0.62f, 0.52f, 0.38f));
+                    new Color(0.62f, 0.52f, 0.38f), out var dr);
 
-                var sc = AttachContainer(go, s.name, 0.9f, true, 0.5f);
+                var sc = AttachContainer(go, s.name, 0.9f, true, 0.5f, dr);
                 list.Add(sc);
             }
 
@@ -526,12 +600,14 @@ namespace BugParty.TopDown2D.EditorTools
 
             for (int i = 0; i < highSpots.Length; i++)
             {
-                var go = Cube(g, "Box_" + highNames[i],
+                var slot = art != null ? art.GetContainerArt(highNames[i]) : null;
+                var go = ArtResolver.BuildSolid(
+                    slot, g.transform, "Box_" + highNames[i],
                     new Vector3(highSpots[i].x, highSpots[i].y + 0.42f, highSpots[i].z),
                     new Vector3(1.1f, 0.8f, 1.0f),
-                    new Color(0.50f, 0.40f, 0.58f));
+                    new Color(0.50f, 0.40f, 0.58f), out var hr);
 
-                var sc = AttachContainer(go, highNames[i], 1.5f, true, 0.8f);
+                var sc = AttachContainer(go, highNames[i], 1.5f, true, 0.8f, hr);
                 list.Add(sc);
             }
 
@@ -539,7 +615,8 @@ namespace BugParty.TopDown2D.EditorTools
         }
 
         static SearchContainer AttachContainer(
-            GameObject go, string name, float rarity, bool elevated, float ownHeight)
+            GameObject go, string name, float rarity, bool elevated, float ownHeight,
+            Renderer highlightTarget = null)
         {
             var anchor = new GameObject("InteractPoint");
             anchor.transform.SetParent(go.transform, false);
@@ -552,7 +629,11 @@ namespace BugParty.TopDown2D.EditorTools
             sc.remainingYield = 2;
             sc.rarityBonus = rarity;
             sc.isElevated = elevated;
-            sc.highlightRenderer = go.GetComponent<Renderer>();
+            // ★用美术模型时碰撞盒的 Renderer 已关闭，必须改指向真正可见的 Renderer，
+            //   否则搜索高亮不会显示
+            sc.highlightRenderer = highlightTarget != null
+                ? highlightTarget
+                : go.GetComponent<Renderer>();
             return sc;
         }
 
@@ -560,9 +641,11 @@ namespace BugParty.TopDown2D.EditorTools
         //  故障氛围道具
         // ══════════════════════════════════════════════
 
-        static void BuildBugProps(Transform root)
+        static void BuildBugProps(Transform root, RoomConfig config)
         {
             var g = NewChild(root, "BugProps");
+            var art = config != null ? config.art : null;
+            var floatArt = art != null ? art.floatingProp : null;
 
             // 天花板数据裂缝
             var crack = Cube(g, "CeilingCrack", new Vector3(0f, WallH - 0.15f, 0f),
@@ -586,15 +669,27 @@ namespace BugParty.TopDown2D.EditorTools
                 a.glitchInterval = Random.Range(1.2f, 4.5f);
             }
 
-            // 悬浮椅子（装饰，无碰撞）
+            // 悬浮椅子（装饰，无碰撞）。★填了 floatingProp 就用真家具模型，
+            // 故障感由 BugAmbience 在运行时叠加，所以这里该填「正常的家具」。
             for (int i = 0; i < 10; i++)
             {
-                var ch = Cube(g, "FloatChair_" + (i + 1),
-                    new Vector3(Random.Range(-13f, 13f), Random.Range(1.4f, 2.6f), Random.Range(-10f, 10f)),
-                    new Vector3(0.6f, 0.6f, 0.6f), new Color(0.29f, 0.31f, 0.37f));
+                var pos = new Vector3(Random.Range(-13f, 13f), Random.Range(1.4f, 2.6f), Random.Range(-10f, 10f));
+                var size = new Vector3(0.6f, 0.6f, 0.6f);
+                GameObject ch;
+                if (floatArt != null && floatArt.HasArt)
+                {
+                    ch = NewChild(g, "FloatChair_" + (i + 1));
+                    ch.transform.localPosition = pos;
+                    ArtResolver.InstantiateArt(floatArt, ch.transform, size, "Art");
+                }
+                else
+                {
+                    ch = Cube(g, "FloatChair_" + (i + 1), pos, size, new Color(0.29f, 0.31f, 0.37f));
+                    KillCollider(ch);
+                }
                 ch.transform.localRotation = Quaternion.Euler(
                     Random.Range(-30f, 30f), Random.Range(0f, 360f), Random.Range(-30f, 30f));
-                KillCollider(ch);
+
                 var a = ch.AddComponent<BugAmbience>();
                 a.bobAmplitude = Random.Range(0.12f, 0.28f);
                 a.bobSpeed = Random.Range(0.7f, 1.5f);
@@ -701,37 +796,25 @@ namespace BugParty.TopDown2D.EditorTools
                 cc.skinWidth = 0.03f;
 
                 // ═══ 视觉体 ═══
-                // ★如果 RoomConfig.characterPrefabs 填了模型，就用美术资源；
-                //   否则退回程序生成的占位胶囊体。两种情况下挂点结构完全一致。
+                // ★通过 ArtResolver 统一处理：RoomArtConfig 填了模型就用美术资源，
+                //   否则退回程序生成的占位胶囊体。两种情况挂点结构完全一致。
                 var visual = NewChild(go, "Visual");
                 Renderer bodyR = null;
 
-                GameObject artPrefab = null;
-                if (config != null && config.characterPrefabs != null
-                    && i < config.characterPrefabs.Length)
-                    artPrefab = config.characterPrefabs[i];
+                var artCfg = config != null ? config.art : null;
+                var charSlot = artCfg != null ? artCfg.GetCharacterArt(i) : null;
+                float charH = artCfg != null ? artCfg.characterHeight : 1.5f;
 
-                if (artPrefab != null)
+                if (charSlot != null && charSlot.HasArt)
                 {
                     // ── 美术资源模式 ──
-                    var model = (GameObject)PrefabUtility.InstantiatePrefab(artPrefab);
-                    model.name = "Model";
-                    model.transform.SetParent(visual.transform, false);
-                    model.transform.localPosition = Vector3.zero;
-                    model.transform.localRotation = Quaternion.identity;
-
-                    // 模型自带的碰撞体要清掉，移动完全交给 CharacterController
-                    foreach (var col in model.GetComponentsInChildren<Collider>(true))
-                        Object.DestroyImmediate(col);
-
-                    // 取第一个 SkinnedMeshRenderer 作为染色目标（用于队伍配色与受击闪白）
-                    var smr = model.GetComponentInChildren<SkinnedMeshRenderer>();
-                    bodyR = smr != null
-                        ? (Renderer)smr
-                        : model.GetComponentInChildren<Renderer>();
+                    // 按角色身高自动缩放，避免不同来源的模型大小不一
+                    bodyR = ArtResolver.InstantiateArt(
+                        charSlot, visual.transform,
+                        new Vector3(charH * 0.5f, charH, charH * 0.5f), "Model");
 
                     // 有 Animator 就自动挂桥接层，不需要手动拖
-                    var anim = model.GetComponentInChildren<Animator>();
+                    var anim = visual.GetComponentInChildren<Animator>();
                     if (anim != null)
                     {
                         var bridge = go.AddComponent<PlayerAnimatorBridge>();
@@ -780,8 +863,8 @@ namespace BugParty.TopDown2D.EditorTools
 
                 // 阴影材质可被美术替换（软边圆形阴影比方片好看很多）
                 var shadowR = shadow.GetComponent<Renderer>();
-                if (config != null && config.shadowMaterial != null)
-                    shadowR.sharedMaterial = config.shadowMaterial;
+                if (artCfg != null && artCfg.shadowMaterial != null)
+                    shadowR.sharedMaterial = artCfg.shadowMaterial;
                 else
                     SetColor(shadowR, new Color(0f, 0f, 0f, 0.42f));
 
