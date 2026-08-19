@@ -71,9 +71,13 @@ namespace BugParty.TopDown2D.EditorTools
             BuildBugProps(root.transform);
             var alarm = BuildAlarmSystem(root.transform);
             var debris = BuildDebrisSpawner(root.transform);
-            var players = BuildPlayers(root.transform);
+            var players = BuildPlayers(root.transform, config);
             BuildCamera(root.transform);
             BuildLights(root.transform);
+
+            // 音效与特效总线：槽位全空也无妨，等美术资源到位再填
+            var av = NewChild(root.transform, "AudioVfx");
+            av.AddComponent<RoomAudioVfx>();
 
             var mgr = BuildManager(root.transform, config, players, containers, grid, door, debris);
 
@@ -662,7 +666,7 @@ namespace BugParty.TopDown2D.EditorTools
         //  玩家
         // ══════════════════════════════════════════════
 
-        static List<PlayerActor> BuildPlayers(Transform root)
+        static List<PlayerActor> BuildPlayers(Transform root, RoomConfig config)
         {
             var g = NewChild(root, "Players");
             var list = new List<PlayerActor>();
@@ -696,34 +700,73 @@ namespace BugParty.TopDown2D.EditorTools
                 cc.stepOffset = 0.42f;
                 cc.skinWidth = 0.03f;
 
-                // 视觉体
+                // ═══ 视觉体 ═══
+                // ★如果 RoomConfig.characterPrefabs 填了模型，就用美术资源；
+                //   否则退回程序生成的占位胶囊体。两种情况下挂点结构完全一致。
                 var visual = NewChild(go, "Visual");
+                Renderer bodyR = null;
 
-                var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                body.name = "Body";
-                body.transform.SetParent(visual.transform, false);
-                body.transform.localPosition = new Vector3(0f, 0.75f, 0f);
-                body.transform.localScale = new Vector3(0.72f, 0.52f, 0.72f);
-                Object.DestroyImmediate(body.GetComponent<Collider>());
-                var bodyR = body.GetComponent<Renderer>();
-                SetColor(bodyR, colors[i].ToColor());
+                GameObject artPrefab = null;
+                if (config != null && config.characterPrefabs != null
+                    && i < config.characterPrefabs.Length)
+                    artPrefab = config.characterPrefabs[i];
 
-                var head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                head.name = "Head";
-                head.transform.SetParent(visual.transform, false);
-                head.transform.localPosition = new Vector3(0f, 1.42f, 0f);
-                head.transform.localScale = Vector3.one * 0.56f;
-                Object.DestroyImmediate(head.GetComponent<Collider>());
-                SetColor(head.GetComponent<Renderer>(), new Color(0.97f, 0.86f, 0.74f));
+                if (artPrefab != null)
+                {
+                    // ── 美术资源模式 ──
+                    var model = (GameObject)PrefabUtility.InstantiatePrefab(artPrefab);
+                    model.name = "Model";
+                    model.transform.SetParent(visual.transform, false);
+                    model.transform.localPosition = Vector3.zero;
+                    model.transform.localRotation = Quaternion.identity;
 
-                // 朝向指示
-                var nose = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                nose.name = "Facing";
-                nose.transform.SetParent(visual.transform, false);
-                nose.transform.localPosition = new Vector3(0f, 1.42f, 0.32f);
-                nose.transform.localScale = new Vector3(0.12f, 0.12f, 0.2f);
-                Object.DestroyImmediate(nose.GetComponent<Collider>());
-                SetColor(nose.GetComponent<Renderer>(), Color.white);
+                    // 模型自带的碰撞体要清掉，移动完全交给 CharacterController
+                    foreach (var col in model.GetComponentsInChildren<Collider>(true))
+                        Object.DestroyImmediate(col);
+
+                    // 取第一个 SkinnedMeshRenderer 作为染色目标（用于队伍配色与受击闪白）
+                    var smr = model.GetComponentInChildren<SkinnedMeshRenderer>();
+                    bodyR = smr != null
+                        ? (Renderer)smr
+                        : model.GetComponentInChildren<Renderer>();
+
+                    // 有 Animator 就自动挂桥接层，不需要手动拖
+                    var anim = model.GetComponentInChildren<Animator>();
+                    if (anim != null)
+                    {
+                        var bridge = go.AddComponent<PlayerAnimatorBridge>();
+                        bridge.animator = anim;
+                    }
+                }
+                else
+                {
+                    // ── 占位体模式 ──
+                    var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                    body.name = "Body";
+                    body.transform.SetParent(visual.transform, false);
+                    body.transform.localPosition = new Vector3(0f, 0.75f, 0f);
+                    body.transform.localScale = new Vector3(0.72f, 0.52f, 0.72f);
+                    Object.DestroyImmediate(body.GetComponent<Collider>());
+                    bodyR = body.GetComponent<Renderer>();
+                    SetColor(bodyR, colors[i].ToColor());
+
+                    var head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    head.name = "Head";
+                    head.transform.SetParent(visual.transform, false);
+                    head.transform.localPosition = new Vector3(0f, 1.42f, 0f);
+                    head.transform.localScale = Vector3.one * 0.56f;
+                    Object.DestroyImmediate(head.GetComponent<Collider>());
+                    SetColor(head.GetComponent<Renderer>(), new Color(0.97f, 0.86f, 0.74f));
+
+                    // 朝向指示
+                    var nose = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    nose.name = "Facing";
+                    nose.transform.SetParent(visual.transform, false);
+                    nose.transform.localPosition = new Vector3(0f, 1.42f, 0.32f);
+                    nose.transform.localScale = new Vector3(0.12f, 0.12f, 0.2f);
+                    Object.DestroyImmediate(nose.GetComponent<Collider>());
+                    SetColor(nose.GetComponent<Renderer>(), Color.white);
+                }
 
                 // ★落地阴影：2D 俯视下判断高度的唯一线索。
                 // 刻意不作为玩家子物体——否则会跟着角色旋转，方形阴影会明显打转
@@ -734,7 +777,13 @@ namespace BugParty.TopDown2D.EditorTools
                 shadow.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
                 shadow.transform.localScale = Vector3.one;
                 Object.DestroyImmediate(shadow.GetComponent<Collider>());
-                SetColor(shadow.GetComponent<Renderer>(), new Color(0f, 0f, 0f, 0.42f));
+
+                // 阴影材质可被美术替换（软边圆形阴影比方片好看很多）
+                var shadowR = shadow.GetComponent<Renderer>();
+                if (config != null && config.shadowMaterial != null)
+                    shadowR.sharedMaterial = config.shadowMaterial;
+                else
+                    SetColor(shadowR, new Color(0f, 0f, 0f, 0.42f));
 
                 // 挂点
                 var hand = NewChild(go, "HandAnchor");

@@ -207,6 +207,31 @@ namespace BugParty.TopDown2D
             return new List<ItemDefinition>();
         }
 
+        // ═══════════════════════════════════════════════
+        [Header("═══ 美术资源替换（留空则用程序生成的占位体）═══")]
+
+        [Tooltip("★角色模型。四个槽位按 红/蓝/黄/绿 顺序填。\n" +
+                 "要求：Prefab 根节点朝 +Z，脚底在 y=0，身高约 1.5 米。\n" +
+                 "填了之后建场工具会用它替换胶囊体，并自动挂 Animator（若有）。")]
+        public GameObject[] characterPrefabs = new GameObject[4];
+
+        [Tooltip("落地阴影贴图。留空则用纯黑半透明方片。")]
+        public Material shadowMaterial;
+
+        [Tooltip("搜索容器模型。留空用彩色方块。")]
+        public GameObject containerPrefab;
+
+        [Tooltip("天花板碎片模型。留空用小方块。")]
+        public GameObject debrisPrefab;
+
+        [Tooltip("地板砖模型。留空用扁平方块。\n注意：必须是 1×1 单位大小，建场时会按格子尺寸缩放。")]
+        public GameObject floorTilePrefab;
+
+        [Header("═══ 地板材质（按状态切换）═══")]
+        public Material floorMatSolid;
+        [Tooltip("开裂预警状态。留空则用代码染红。")]
+        public Material floorMatCracking;
+
         public ItemDefinition RollItem(RoomTheme theme)
         {
             var pool = GetPool(theme);

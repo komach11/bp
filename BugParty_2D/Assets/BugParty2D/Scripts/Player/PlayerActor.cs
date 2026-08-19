@@ -65,6 +65,12 @@ namespace BugParty.TopDown2D
 
         public float HorizontalSpeed => new Vector2(_velocity.x, _velocity.z).magnitude;
 
+        /// <summary>垂直速度。正=上升，负=下落。供动画桥接层驱动跳跃/下落动画。</summary>
+        public float VerticalVelocity => _vertical;
+
+        /// <summary>是否正在搜索容器。转发 SearchAbility，方便动画与音效层直接读。</summary>
+        public bool IsSearching => Search != null && Search.IsSearching;
+
         // ── 输入（由控制器写入）─────────────────────
         public Vector2 MoveInput { get; set; }
         public bool WantJump { get; set; }
