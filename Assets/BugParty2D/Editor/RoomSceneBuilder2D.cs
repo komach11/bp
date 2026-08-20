@@ -662,12 +662,27 @@ namespace BugParty.TopDown2D.EditorTools
             var art = config != null ? config.art : null;
             var floatArt = art != null ? art.floatingProp : null;
 
-            // 天花板数据裂缝
-            var crack = Cube(g, "CeilingCrack", new Vector3(0f, WallH - 0.15f, 0f),
-                new Vector3(12f, 0.1f, 0.8f), new Color(0.25f, 0.70f, 1.0f));
+            // ═══ 天花板数据裂缝 ═══
+            // ★挪到房间靠后的墙边，不再横在会议桌正上方。
+            //   相机俯角 70° 而非垂直，高处物体在画面上会向下偏移压住玩法区，
+            //   原本 12 米长的裂缝正好盖住桌面与两个桌面容器。
+            // ★底色改成暗青。原先底色与 BugAmbience.glitchColor 是同一个值
+            //   (0.25,0.70,1.0)，Lerp 混合后毫无变化，故障闪烁完全看不出来。
+            float crackZ = -(GridRows * TileSize) * 0.5f + 2.2f;
+            var crackBase = new Color(0.10f, 0.26f, 0.42f);
+            var crack = Cube(g, "CeilingCrack", new Vector3(0f, WallH - 0.15f, crackZ),
+                new Vector3(4.5f, 0.1f, 0.5f), crackBase);
             KillCollider(crack);
             var ca = crack.AddComponent<BugAmbience>();
-            ca.bobAmplitude = 0.05f; ca.glitchInterval = 1.6f; ca.driftSpin = 0f;
+            ca.bobAmplitude = 0.05f;
+            ca.glitchInterval = 1.6f;
+            ca.driftSpin = 0f;
+            ca.glitchColor = new Color(0.45f, 0.90f, 1.0f);   // 比底色亮得多，闪烁才可见
+
+            // ═══ ★中央吊扇 ═══
+            // 取代原先横贯画面的裂缝。圆形紧凑，占地远小于 12 米长条，
+            // 旋转本身即是持续动态，比静止长条更适合做氛围。
+            BuildCeilingFan(g, config);
 
             // 漂浮像素块（数量随场景放大而增加）
             for (int i = 0; i < 34; i++)
@@ -710,6 +725,81 @@ namespace BugParty.TopDown2D.EditorTools
                 a.bobSpeed = Random.Range(0.7f, 1.5f);
                 a.driftSpin = Random.Range(-18f, 18f);
             }
+        }
+
+        /// <summary>
+        /// 天花板吊扇。放在房间正中央，取代原先横贯画面的数据裂缝。
+        ///
+        /// ★与其他家具不同，吊扇模型是「顶面对齐 y=0、向下延伸」建模的
+        ///   （Kenney ceilingFan 的 Y 范围是 -1.34~0），
+        ///   不能走 ArtResolver 的底面贴地对齐，否则会被推到天花板上面去。
+        ///   这里手动挂到吊点下方。
+        /// </summary>
+        static void BuildCeilingFan(GameObject parent, RoomConfig config)
+        {
+            var art = config != null ? config.art : null;
+            var fanArt = art != null ? art.ceilingFan : null;
+
+            // 吊点：房间正中央，略低于天花板
+            var pivot = NewChild(parent, "CeilingFan");
+            pivot.transform.localPosition = new Vector3(0f, WallH - 0.45f, 0f);
+
+            var fan = pivot.AddComponent<CeilingFan>();
+
+            if (fanArt != null && fanArt.HasArt)
+            {
+                // ── 美术模型 ──
+                var model = (GameObject)PrefabUtility.InstantiatePrefab(fanArt.prefab);
+                model.name = "Art";
+                model.transform.SetParent(pivot.transform, false);
+                model.transform.localPosition = new Vector3(0f, fanArt.yOffset, 0f);
+                model.transform.localRotation = Quaternion.Euler(0f, fanArt.yawOffset, 0f);
+                ArtResolver.StripColliders(model);
+
+                // 按目标直径等比缩放。吊扇模型的自然直径约 4.5~5.2 单位，
+                // 缩到 2.2 米左右在俯视下体量合适，也不会盖住会议桌
+                float target = 2.2f;
+                var r = model.GetComponentInChildren<Renderer>();
+                if (r != null)
+                {
+                    var sz = r.bounds.size;
+                    float diameter = Mathf.Max(sz.x, sz.z);
+                    if (diameter > 1e-3f)
+                        model.transform.localScale = Vector3.one * (target / diameter) * fanArt.scaleMul;
+                }
+                fan.spinTarget = model.transform;
+            }
+            else
+            {
+                // ── 占位体：中心轴 + 四片扇叶 ──
+                var hub = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                hub.name = "Art";
+                hub.transform.SetParent(pivot.transform, false);
+                hub.transform.localPosition = Vector3.zero;
+                hub.transform.localScale = new Vector3(0.22f, 0.09f, 0.22f);
+                KillCollider(hub);
+                SetColor(hub.GetComponent<Renderer>(), new Color(0.32f, 0.34f, 0.40f));
+
+                for (int i = 0; i < 4; i++)
+                {
+                    var blade = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    blade.name = "Blade_" + (i + 1);
+                    blade.transform.SetParent(hub.transform, false);
+                    // hub 有非等比 scale，扇叶的 localScale 需按比例换算
+                    blade.transform.localRotation = Quaternion.Euler(0f, i * 90f, 0f);
+                    blade.transform.localPosition =
+                        blade.transform.localRotation * new Vector3(0f, 0f, 2.6f);
+                    blade.transform.localScale = new Vector3(1.5f, 0.35f, 4.6f);
+                    KillCollider(blade);
+                    SetColor(blade.GetComponent<Renderer>(), new Color(0.42f, 0.44f, 0.50f));
+                }
+                fan.spinTarget = hub.transform;
+            }
+
+            // 吊杆：从天花板连到扇体，让它看起来是"吊"着的
+            var rod = Cube(pivot, "Rod", new Vector3(0f, 0.28f, 0f),
+                new Vector3(0.08f, 0.56f, 0.08f), new Color(0.28f, 0.30f, 0.35f));
+            KillCollider(rod);
         }
 
         // ══════════════════════════════════════════════

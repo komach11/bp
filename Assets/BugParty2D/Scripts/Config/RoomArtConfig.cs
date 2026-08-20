@@ -129,6 +129,13 @@ namespace BugParty.TopDown2D
                  "所以这里应该填「正常的家具模型」，不要填自带发光的。")]
         public ArtSlot floatingProp = new ArtSlot();
 
+        [Tooltip("★天花板吊扇（房间正中央）。留空则用程序生成的四叶占位扇。\n\n" +
+                 "注意：吊扇模型通常是「顶面对齐 y=0、向下延伸」建模的，\n" +
+                 "建场时会挂到吊点下方并按直径缩放到约 2.2 米，\n" +
+                 "不走常规的底面贴地对齐，所以 fitToSize 对它无效。\n" +
+                 "Kenney 包里的 ceilingFan 可直接用。")]
+        public ArtSlot ceilingFan = new ArtSlot();
+
         // ── 查询 ──────────────────────────────────────
 
         /// <summary>取容器外观。先查名字覆盖，再退到默认槽。</summary>
