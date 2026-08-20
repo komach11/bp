@@ -30,6 +30,14 @@ namespace BugParty.TopDown2D
         [Tooltip("往下探多远来判定「脚下那块地板」。\n平台类物件本身有高度，需要从底面往下探。")]
         [Min(0.05f)] public float groundProbe = 0.6f;
 
+        [Tooltip("★支撑率阈值。物件占地范围内还剩多少比例的地板时仍能站住。\n" +
+                 "会议桌 11×4 米横跨 5×2 个格子，塌一格不该让整张桌子掉下去。\n" +
+                 "0.5 = 一半地板塌了才掉；1.0 = 塌任意一格就掉（旧行为）。")]
+        [Range(0.05f, 1f)] public float supportThreshold = 0.45f;
+
+        [Tooltip("采样密度（每米几个采样点）。太密浪费性能，太疏会漏判小格子")]
+        [Range(0.5f, 4f)] public float samplesPerMeter = 1.2f;
+
         [Header("掉落表现")]
         [Tooltip("掉落前的迟滞。让家具比地板晚一点点掉，视觉上更像\"失去支撑\"而不是同步下沉。")]
         [Min(0f)] public float fallDelay = 0.12f;
@@ -83,13 +91,134 @@ namespace BugParty.TopDown2D
 
         // ══════════════════════════════════════════════
 
-        /// <summary>单块地板塌了：只有塌的正好是自己脚下那块才掉。</summary>
+        /// <summary>
+        /// 单块地板塌了：检查自己的占地范围里还剩多少支撑，不足才掉。
+        ///
+        /// 原先是「塌的那块正好是我脚下那块就掉」，但只从物件中心一个点往下探。
+        /// 会议桌 11×4 米横跨 5×2 个格子，结果：
+        ///   · 中心格塌 → 整张桌子掉（不合理，另外 9 格还撑着）
+        ///   · 边角格塌 → 完全不掉（也不合理，但相对没那么突兀）
+        /// 改为按占地范围采样，统计剩余支撑比例。
+        /// </summary>
         void HandleTileCollapsed(FloorTile tile)
         {
             if (_falling || !fallWithTileBelow || tile == null) return;
-            if (!IsStandingOn(tile)) return;
+
+            // 先快速排除：塌的这块根本不在我占地范围内，直接忽略。
+            // 这一步是性能优化 —— 一次塌陷会广播给场上所有 FallingProp，
+            // 没必要每个都去做一遍网格采样。
+            if (!OverlapsTile(tile)) return;
+
+            if (SupportRatio() >= supportThreshold) return;
 
             StartCoroutine(FallAfter(fallDelay));
+        }
+
+        /// <summary>塌掉的这块地板是否在自己的占地范围内（水平投影相交）。</summary>
+        bool OverlapsTile(FloorTile tile)
+        {
+            var fp = Footprint();
+            var tp = tile.transform.position;
+
+            // 地板砖尺寸不定，用它自己的碰撞盒；取不到就按网格尺寸估
+            float half = _grid != null ? _grid.tileSize * 0.5f : 0.5f;
+
+            return tp.x + half >= fp.xMin && tp.x - half <= fp.xMax
+                && tp.z + half >= fp.zMin && tp.z - half <= fp.zMax;
+        }
+
+        struct Rect2 { public float xMin, xMax, zMin, zMax; }
+
+        /// <summary>自己在水平面上的占地范围。</summary>
+        Rect2 Footprint()
+        {
+            var p = transform.position;
+            var r = new Rect2 { xMin = p.x, xMax = p.x, zMin = p.z, zMax = p.z };
+
+            if (_cols == null || _cols.Length == 0) return r;
+
+            bool init = false;
+            var b = new Bounds();
+            foreach (var c in _cols)
+            {
+                if (c == null) continue;
+                // 注意不能过滤 !enabled —— 掉落时碰撞体被设为 Trigger 但仍 enabled，
+                // 而这里本来也只在未掉落时调用
+                if (!init) { b = c.bounds; init = true; }
+                else b.Encapsulate(c.bounds);
+            }
+            if (!init) return r;
+
+            r.xMin = b.min.x; r.xMax = b.max.x;
+            r.zMin = b.min.z; r.zMax = b.max.z;
+            return r;
+        }
+
+        /// <summary>
+        /// 占地范围内还有多少比例的地板是完好的。
+        /// 1 = 全部完好，0 = 全塌。
+        /// </summary>
+        float SupportRatio()
+        {
+            if (_grid == null) return 1f;
+
+            var fp = Footprint();
+            float bottom = BottomY();
+            float y = bottom - groundProbe;
+
+            float w = Mathf.Max(0.01f, fp.xMax - fp.xMin);
+            float d = Mathf.Max(0.01f, fp.zMax - fp.zMin);
+
+            // 至少 2×2 个采样点，保证小物件也能采到多点
+            int nx = Mathf.Max(2, Mathf.CeilToInt(w * samplesPerMeter));
+            int nz = Mathf.Max(2, Mathf.CeilToInt(d * samplesPerMeter));
+
+            int total = 0, solid = 0;
+            for (int ix = 0; ix < nx; ix++)
+            {
+                // 采样点取每段的中心，避免正好落在格子边界上产生抖动
+                float fx = (ix + 0.5f) / nx;
+                float x = Mathf.Lerp(fp.xMin, fp.xMax, fx);
+
+                for (int iz = 0; iz < nz; iz++)
+                {
+                    float fz = (iz + 0.5f) / nz;
+                    float z = Mathf.Lerp(fp.zMin, fp.zMax, fz);
+
+                    total++;
+                    // 用 IsHoleAt 而非 GetTileAt：后者返回 null 也可能是「超出网格范围」，
+                    // 比如靠墙的柜子有一部分探到网格外，那不该算成塌了
+                    var probe = new Vector3(x, y, z);
+                    var t = _grid.GetTileAt(probe);
+                    if (t == null)
+                    {
+                        // 超出网格 = 不是洞，按有支撑算（墙边物件不该因此掉落）
+                        solid++;
+                    }
+                    else if (!t.IsHole)
+                    {
+                        solid++;
+                    }
+                }
+            }
+
+            return total > 0 ? (float)solid / total : 1f;
+        }
+
+        float BottomY()
+        {
+            var p = transform.position;
+            if (_cols == null || _cols.Length == 0) return p.y;
+
+            bool init = false;
+            var b = new Bounds();
+            foreach (var c in _cols)
+            {
+                if (c == null) continue;
+                if (!init) { b = c.bounds; init = true; }
+                else b.Encapsulate(c.bounds);
+            }
+            return init ? b.min.y : p.y;
         }
 
         /// <summary>终局全塌：按到震中的距离错开，跟上地板的波浪节奏。</summary>
@@ -107,36 +236,6 @@ namespace BugParty.TopDown2D
             float dist = Vector2.Distance(a, b);
 
             StartCoroutine(FallAfter(fallDelay + dist * waveDelayPerMeter));
-        }
-
-        /// <summary>
-        /// 判断这块地板是不是自己的支撑。
-        /// 从物件底面中心往下探，取到的格子与传入的比对。
-        /// </summary>
-        bool IsStandingOn(FloorTile tile)
-        {
-            if (_grid == null) return false;
-
-            var p = transform.position;
-
-            // 从包围盒底面往下探一点，避免物件本身高度造成误判
-            float bottom = p.y;
-            if (_cols != null && _cols.Length > 0)
-            {
-                bool init = false;
-                var b = new Bounds();
-                foreach (var c in _cols)
-                {
-                    if (c == null || !c.enabled) continue;
-                    if (!init) { b = c.bounds; init = true; }
-                    else b.Encapsulate(c.bounds);
-                }
-                if (init) bottom = b.min.y;
-            }
-
-            var probe = new Vector3(p.x, bottom - groundProbe, p.z);
-            var below = _grid.GetTileAt(probe);
-            return below == tile;
         }
 
         // ══════════════════════════════════════════════

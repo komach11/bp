@@ -73,17 +73,46 @@ namespace BugParty.TopDown2D
         /// 玩家掉进洞里后用它来决定弹回哪里。
         /// </summary>
         public Vector3 FindNearestSafePosition(Vector3 from)
+            => FindNearestSafePosition(from, false);
+
+        /// <summary>
+        /// 最近的可站立地板位置。
+        /// preferProtected = true 时优先选受保护的地板（四角出生区，搜索阶段不随机塌）。
+        ///
+        /// 为什么需要：踩空掉落的道具原先落在「最近的可站立地板」上，但那块之后
+        /// 也可能塌，道具跟着沉进虚空 —— 玩家等于被惩罚两次，且最终交接给
+        /// 捕鱼场景的数据可能一件不剩。落在受保护区虽然远一点，但不会凭空消失。
+        /// </summary>
+        public Vector3 FindNearestSafePosition(Vector3 from, bool preferProtected)
         {
             FloorTile best = null;
             float bestSqr = float.MaxValue;
 
-            for (int i = 0; i < _all.Count; i++)
+            // 第一轮：只找受保护的
+            if (preferProtected)
             {
-                var t = _all[i];
-                if (t == null || !t.IsWalkable) continue;
+                for (int i = 0; i < _all.Count; i++)
+                {
+                    var t = _all[i];
+                    if (t == null || !t.IsWalkable || !t.isProtected) continue;
 
-                float d = (t.transform.position - from).sqrMagnitude;
-                if (d < bestSqr) { bestSqr = d; best = t; }
+                    float d = (t.transform.position - from).sqrMagnitude;
+                    if (d < bestSqr) { bestSqr = d; best = t; }
+                }
+            }
+
+            // 第二轮：没有受保护的可用（终局全塌）就退回任意可站立的
+            if (best == null)
+            {
+                bestSqr = float.MaxValue;
+                for (int i = 0; i < _all.Count; i++)
+                {
+                    var t = _all[i];
+                    if (t == null || !t.IsWalkable) continue;
+
+                    float d = (t.transform.position - from).sqrMagnitude;
+                    if (d < bestSqr) { bestSqr = d; best = t; }
+                }
             }
 
             if (best == null) return from + Vector3.up * 2f;

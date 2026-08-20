@@ -375,10 +375,13 @@ namespace BugParty.TopDown2D
                 {
                     var item = Inventory.PopLatest();
                     if (item == null) break;
-                    // 道具掉在坠落前的位置上方，方便别人捡
+
+                    // ★道具掉在受保护的地板上（四角出生区，搜索阶段不会随机塌），
+                    //   而不是「最近的可站立地板」—— 后者之后也可能塌，道具跟着
+                    //   沉进虚空，等于玩家被惩罚两次，最终交接数据也可能为空
                     var mgr2 = RoomManager.Instance;
                     var safe = mgr2 != null && mgr2.floorGrid != null
-                        ? mgr2.floorGrid.FindNearestSafePosition(transform.position)
+                        ? mgr2.floorGrid.FindNearestSafePosition(transform.position, true)
                         : transform.position + Vector3.up * 2f;
                     WorldItem.SpawnDropped(item, safe, Vector3.up + Random.insideUnitSphere * 0.3f, _cfg);
                     RoomEvents.RaiseItemKnockedOut(this, item);

@@ -96,10 +96,28 @@ namespace BugParty.TopDown2D
         {
             var mgr = RoomManager.Instance;
 
-            // ★地板塌了之后掉下去的道具直接销毁，避免堆在虚空里
-            if (mgr != null && transform.position.y < -12f)
+            // ★掉出场景的道具要救回来，而不是销毁。
+            //
+            // 原先是直接 Destroy —— 但搜索阶段会随机塌 5 块地板，掉落的道具
+            // 落在当时的安全地板上，那块地板之后也可能塌，道具就跟着沉进虚空。
+            // 玩家辛苦搜到的东西反复凭空消失，而且最终交接给捕鱼场景的
+            // CarryOverData 可能一件不剩。
+            //
+            // 现在改为传送回最近的安全地板。只有终局全塌（此时已无安全地板可言、
+            // 玩家也都在坠落）才真正销毁。
+            if (transform.position.y < -12f)
             {
-                Destroy(gameObject);
+                bool finalPhase = mgr != null
+                    && (mgr.Phase == RoundPhase.Collapse || mgr.Phase == RoundPhase.Transition
+                        || mgr.Phase == RoundPhase.Finished);
+
+                if (finalPhase || mgr == null || mgr.floorGrid == null)
+                {
+                    Destroy(gameObject);
+                    return;
+                }
+
+                Rescue(mgr);
                 return;
             }
 
@@ -150,6 +168,31 @@ namespace BugParty.TopDown2D
                 RoomEvents.RaiseItemCollected(best, definition);
                 Destroy(gameObject);
             }
+        }
+
+        /// <summary>
+        /// 把掉出场景的道具传送回最近的安全地板，而不是销毁。
+        /// 搜索阶段地板会不断塌，道具落点随时可能变成洞 —— 让玩家搜到的东西
+        /// 因此凭空消失是很糟糕的体验，也会导致最终交接数据为空。
+        /// </summary>
+        void Rescue(RoomManager mgr)
+        {
+            // 用受保护的落点，否则救回来的道具可能又落在会塌的地板上，
+            // 反复掉、反复救，看起来像在闪现
+            var safe = mgr.floorGrid.FindNearestSafePosition(transform.position, true);
+            safe.y += 1.2f;   // 抬高一点，靠自身重力落到地板上
+
+            transform.position = safe;
+
+            if (_rb != null)
+            {
+                _rb.velocity = Vector3.zero;
+                _rb.angularVelocity = Vector3.zero;
+            }
+
+            // 重置沉降状态，让它重新走一遍落地流程（否则会悬在空中转圈）
+            _settled = false;
+            _spawnTime = Time.time;
         }
     }
 }
