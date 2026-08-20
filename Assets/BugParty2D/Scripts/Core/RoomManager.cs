@@ -357,6 +357,11 @@ namespace BugParty.TopDown2D
             if (floorGrid != null) floorGrid.ResetAll();
             if (debrisSpawner != null) debrisSpawner.ClearAll();
 
+            // ★把塌陷时掉下去的家具/容器复位，否则重开后房间是空的
+            var props = FindObjectsOfType<FallingProp>(true);
+            for (int i = 0; i < props.Length; i++)
+                if (props[i] != null) props[i].ResetProp();
+
             var loose = FindObjectsOfType<WorldItem>();
             for (int i = 0; i < loose.Length; i++)
                 if (loose[i] != null) Destroy(loose[i].gameObject);

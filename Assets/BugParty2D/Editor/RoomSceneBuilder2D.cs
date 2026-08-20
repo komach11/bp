@@ -509,6 +509,10 @@ namespace BugParty.TopDown2D.EditorTools
                 KillCollider(top);
             }
 
+            // ★地板塌了之后家具要跟着掉，否则会悬在空中
+            var fall = go.AddComponent<FallingProp>();
+            fall.mass = Mathf.Clamp(size.x * size.z * 0.35f, 0.8f, 6f);   // 大件更重
+
             return new PlatformInfo { name = name, center = basePos, topY = size.y };
         }
 
@@ -526,7 +530,10 @@ namespace BugParty.TopDown2D.EditorTools
                 float offset = (flip ? -1f : 1f) * (i * 0.8f);
                 var pos = new Vector3(basePos.x + offset, h * 0.5f, basePos.z);
                 var size = new Vector3(0.8f, h, 3f);
-                ArtResolver.BuildSolid(art, g.transform, $"{name}_Step{i}", pos, size, col, out _);
+                var step = ArtResolver.BuildSolid(art, g.transform, $"{name}_Step{i}", pos, size, col, out _);
+
+                var fall = step.AddComponent<FallingProp>();
+                fall.mass = 1.2f;
             }
         }
 
@@ -634,6 +641,14 @@ namespace BugParty.TopDown2D.EditorTools
             sc.highlightRenderer = highlightTarget != null
                 ? highlightTarget
                 : go.GetComponent<Renderer>();
+
+            // ★塌陷时跟着掉。架高的容器（桌面/高台）不直接坐在地板上，
+            //   所以只在终局全塌时掉，避免脚下那格地板塌了它就凭空坠落。
+            var fall = go.AddComponent<FallingProp>();
+            fall.fallWithTileBelow = !elevated;
+            fall.mass = elevated ? 0.7f : 1.0f;
+            fall.tumbleTorque = 3.5f;     // 小件翻滚更明显
+
             return sc;
         }
 

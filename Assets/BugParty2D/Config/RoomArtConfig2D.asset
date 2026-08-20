@@ -1,0 +1,211 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: daf2284d1052c5a4eaa6de55d19c82b1, type: 3}
+  m_Name: RoomArtConfig2D
+  m_EditorClassIdentifier: 
+  characters:
+  - prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  - prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  - prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  - prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  characterHeight: 1.5
+  shadowMaterial: {fileID: 0}
+  desk:
+    prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  chair:
+    prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  cabinet:
+    prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  highPlatform:
+    prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  rampStep:
+    prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  keepPlatformTopFace: 1
+  containerDefault:
+    prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  containerOverrides:
+  - key: "\u6587\u4EF6\u67DC"
+    art:
+      prefab: {fileID: 919132149155446097, guid: 7f668abd2cae9234985153f919cf1101, type: 3}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  - key: "\u996E\u6C34\u673A"
+    art:
+      prefab: {fileID: 0}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  - key: "\u6295\u5F71\u4EEA\u7BB1"
+    art:
+      prefab: {fileID: 0}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  - key: "\u6253\u5370\u673A"
+    art:
+      prefab: {fileID: 0}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  - key: "\u7EB8\u7BB1\u5806"
+    art:
+      prefab: {fileID: 919132149155446097, guid: 67b37e7ca97294b4abbf2743b177819f, type: 3}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  - key: "\u5783\u573E\u6876"
+    art:
+      prefab: {fileID: 919132149155446097, guid: af743c6f734ce2c4c8b6b6369d306513, type: 3}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  - key: "\u6742\u7269\u67B6"
+    art:
+      prefab: {fileID: 0}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  - key: "\u5DE5\u5177\u7BB1"
+    art:
+      prefab: {fileID: 0}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  - key: "\u684C\u4E0A\u7B14\u8BB0\u672C"
+    art:
+      prefab: {fileID: 919132149155446097, guid: 55b4eb91f9ed12d4bbd0a1b2d00f46fb, type: 3}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  - key: "\u684C\u4E0A\u6587\u4EF6\u5939"
+    art:
+      prefab: {fileID: 0}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  - key: "\u9876\u67DC\u4FDD\u9669\u7BB1"
+    art:
+      prefab: {fileID: 0}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  - key: "\u9876\u67DC\u6863\u6848\u76D2"
+    art:
+      prefab: {fileID: 0}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  - key: "\u9876\u67DC\u670D\u52A1\u5668"
+    art:
+      prefab: {fileID: 0}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  - key: "\u9876\u67DC\u5DE5\u5177\u5305"
+    art:
+      prefab: {fileID: 0}
+      scaleMul: 1
+      yawOffset: 0
+      yOffset: 0
+      fitToSize: 1
+  floorTile:
+    prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  floorMatSolid: {fileID: 0}
+  floorMatCracking: {fileID: 0}
+  wallSegment:
+    prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  whiteboard:
+    prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  doorLeaf:
+    prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  debris:
+    prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  floatingProp:
+    prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1

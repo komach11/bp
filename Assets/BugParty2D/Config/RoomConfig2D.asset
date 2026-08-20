@@ -61,7 +61,7 @@ MonoBehaviour:
   screenShakeIntervalUrgent: 1.8
   screenShakeAmount: 0.28
   screenShakeDuration: 0.22
-  cameraPitch: 50
+  cameraPitch: 70
   orthographicSize: 11.5
   autoFrame: 1
   minOrthoSize: 10
@@ -100,11 +100,8 @@ MonoBehaviour:
     - {fileID: 11400000, guid: 6541814278113954ba13d7980b5bd81e, type: 2}
     - {fileID: 11400000, guid: 18db6122fff4b53488ab37f5abce7e0e, type: 2}
     - {fileID: 11400000, guid: 475f7745d02fcf94ba77f2135cd4f206, type: 2}
-  characterPrefabs:
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
+  art: {fileID: 11400000, guid: 1ecdeb97807ad2c4b968d00c43333841, type: 2}
+  characterPrefabs: []
   shadowMaterial: {fileID: 0}
   containerPrefab: {fileID: 0}
   debrisPrefab: {fileID: 0}
