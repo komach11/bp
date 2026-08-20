@@ -38,6 +38,12 @@ namespace BugParty.TopDown2D
         Vector3 _spawnPos;
         Quaternion _spawnRot;
 
+        /// <summary>
+        /// 出生点世界坐标。HUD 用它决定物品栏画在屏幕哪个角 ——
+        /// 必须用出生点而非当前位置，否则玩家一跑动面板就会满屏乱跳。
+        /// </summary>
+        public Vector3 SpawnPosition => _spawnPos;
+
         // ── 水平移动 ───────────────────────────────────
         Vector3 _velocity;
         Vector3 _velSmooth;

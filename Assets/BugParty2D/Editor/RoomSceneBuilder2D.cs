@@ -896,8 +896,12 @@ namespace BugParty.TopDown2D.EditorTools
                 cc.radius = 0.38f;
                 cc.center = new Vector3(0f, 0.75f, 0f);
                 cc.slopeLimit = 55f;
-                // ★stepOffset 要够大才能自动爬上斜坡台阶
-                cc.stepOffset = 0.42f;
+                // ★stepOffset 决定「多高的台阶能走上去而不用跳」。
+                //   原为 0.42，接近矮柜高度 0.55，加上 CharacterController 在有水平
+                //   速度时实际爬升能力会超出标称值，导致玩家推着走就能白嫖上桌 ——
+                //   跳跃这个核心机制被完全绕过。
+                //   降到 0.18 只够跨过门槛与地板缝隙，任何平台都必须跳。
+                cc.stepOffset = 0.18f;
                 cc.skinWidth = 0.03f;
 
                 // ═══ 视觉体 ═══

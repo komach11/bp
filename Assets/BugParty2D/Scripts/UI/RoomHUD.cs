@@ -66,7 +66,9 @@ namespace BugParty.TopDown2D
 
         void OnCollected(PlayerActor a, ItemDefinition i)
         {
-            Push($"{a.playerColor.ToLabel()}方 获得 {i.displayName}（{i.lootValue}分）");
+            // ★不报分数。道具价值不参与结算（结算只列「带什么工具进下一关」），
+            //   在这里报分会让玩家误以为在比分数
+            Push($"{a.playerColor.ToLabel()}方 获得 {i.displayName}");
             if (IsLocal(a)) Flash($"+ {i.displayName}");
         }
 
@@ -289,22 +291,62 @@ namespace BugParty.TopDown2D
         {
             float pw = 200f, ph = 96f, pad = 10f;
 
-            var slots = new Rect[4]
-            {
-                new Rect(pad, Screen.height - ph - pad - 62f, pw, ph),
-                new Rect(Screen.width - pw - pad, Screen.height - ph - pad - 62f, pw, ph),
-                new Rect(pad, 100f, pw, ph),
-                new Rect(Screen.width - pw - pad, 100f, pw, ph),
-            };
+            // ★面板位置按玩家的实际方位映射，而不是按 players 列表顺序写死。
+            //
+            // 原先是固定四个 Rect 按索引分配，结果红方出生在左上角（-13, +9）
+            // 却把面板画在左下角 —— 玩家要在脑子里做一次映射才知道哪个面板是自己的。
+            //
+            // 相机 yaw = 0 且俯视，所以世界坐标到屏幕的映射是：
+            //   世界 +X → 屏幕右      世界 +Z → 屏幕上
+            // 用出生点判断象限即可。注意用出生点而非当前位置，否则玩家一跑动
+            // 面板就会满屏乱跳。
+            float topY = 100f;
+            float botY = Screen.height - ph - pad - 62f;
+            float leftX = pad;
+            float rightX = Screen.width - pw - pad;
 
-            int idx = 0;
-            for (int i = 0; i < mgr.players.Count && idx < 4; i++)
+            // 四个象限各自的目标位置：[左上, 右上, 左下, 右下]
+            var quad = new Rect[4]
+            {
+                new Rect(leftX,  topY, pw, ph),
+                new Rect(rightX, topY, pw, ph),
+                new Rect(leftX,  botY, pw, ph),
+                new Rect(rightX, botY, pw, ph),
+            };
+            var used = new bool[4];
+
+            // 先按象限分配，同象限冲突时退到下一个空位
+            for (int i = 0; i < mgr.players.Count; i++)
             {
                 var p = mgr.players[i];
                 if (p == null) continue;
-                DrawOneInventory(slots[idx], p, mgr);
-                idx++;
+
+                int q = QuadrantOf(p);
+                if (used[q])
+                {
+                    // 该象限已被占（理论上不会，除非出生点配置重复），找第一个空的
+                    q = -1;
+                    for (int k = 0; k < 4; k++) if (!used[k]) { q = k; break; }
+                    if (q < 0) break;
+                }
+
+                used[q] = true;
+                DrawOneInventory(quad[q], p, mgr);
             }
+        }
+
+        /// <summary>
+        /// 玩家属于哪个屏幕象限。0=左上 1=右上 2=左下 3=右下。
+        /// 用出生点而非当前位置：面板不该随玩家跑动而移位。
+        /// </summary>
+        static int QuadrantOf(PlayerActor p)
+        {
+            var sp = p.SpawnPosition;
+            bool right = sp.x >= 0f;
+            bool top = sp.z >= 0f;      // 世界 +Z 对应屏幕上方
+
+            if (top) return right ? 1 : 0;
+            return right ? 3 : 2;
         }
 
         void DrawOneInventory(Rect r, PlayerActor p, RoomManager mgr)
@@ -316,8 +358,12 @@ namespace BugParty.TopDown2D
             ts.normal.textColor = col;
 
             string tag = p.GetComponent<AIBrain>() != null ? " (AI)" : "";
+            // ★不显示分数。改为显示「已装 N/上限」，玩家真正需要知道的是
+            //   还剩几个格子（满了就搜不了），而不是一个不参与结算的分数
+            int cap0 = mgr.config != null ? mgr.config.inventoryCapacity : 2;
             GUI.Label(new Rect(r.x + 10f, r.y + 5f, r.width - 20f, 22f),
-                      p.playerColor.ToLabel() + "方" + tag + $"　{p.Inventory.TotalValue}分", ts);
+                      p.playerColor.ToLabel() + "方" + tag
+                      + $"　{p.Inventory.Count}/{cap0}", ts);
 
             int cap = mgr.config.inventoryCapacity;
             float cell = 30f, gap = 6f;
