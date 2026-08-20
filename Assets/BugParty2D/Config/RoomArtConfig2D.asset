@@ -82,7 +82,7 @@ MonoBehaviour:
       fitToSize: 1
   - key: "\u996E\u6C34\u673A"
     art:
-      prefab: {fileID: 0}
+      prefab: {fileID: 919132149155446097, guid: 6962ec56232d30f4e984db0252bf2a0b, type: 3}
       scaleMul: 1
       yawOffset: 0
       yOffset: 0
@@ -204,6 +204,12 @@ MonoBehaviour:
     yOffset: 0
     fitToSize: 1
   floatingProp:
+    prefab: {fileID: 0}
+    scaleMul: 1
+    yawOffset: 0
+    yOffset: 0
+    fitToSize: 1
+  ceilingFan:
     prefab: {fileID: 0}
     scaleMul: 1
     yawOffset: 0
