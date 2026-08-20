@@ -417,30 +417,74 @@ namespace BugParty.TopDown2D
                       sb.ToString(), new GUIStyle(_small) { alignment = TextAnchor.UpperCenter });
         }
 
+        /// <summary>
+        /// 结算界面。★只展示各玩家获得了什么道具，不折算分数、不排名 ——
+        /// 密室环节的意义是「带什么工具进下一关」，胜负由后续玩法决定。
+        /// </summary>
         void DrawSettlement(RoomManager mgr)
         {
-            float w = 400f, h = 56f + mgr.players.Count * 26f;
+            var list = new List<PlayerActor>(mgr.players);
+            list.RemoveAll(p => p == null);
+            // 按固定队伍顺序显示，不按成绩排名
+            list.Sort((a, b) => ((int)a.playerColor).CompareTo((int)b.playerColor));
+
+            float w = 470f;
+            float rowH = 30f;
+            float h = 108f + list.Count * rowH;
             var r = new Rect((Screen.width - w) * 0.5f, (Screen.height - h) * 0.5f, w, h);
             GUI.DrawTexture(r, _panelDark);
 
-            GUI.Label(new Rect(r.x, r.y + 8f, r.width, 24f), "本环节结算",
+            GUI.Label(new Rect(r.x, r.y + 10f, r.width, 24f), "搜刮结束 · 携带清单",
                       new GUIStyle(_mid) { alignment = TextAnchor.MiddleCenter });
 
-            var sorted = new List<PlayerActor>(mgr.players);
-            sorted.RemoveAll(p => p == null);
-            sorted.Sort((a, b) => b.Inventory.TotalValue.CompareTo(a.Inventory.TotalValue));
+            var sub = new GUIStyle(_tiny) { alignment = TextAnchor.MiddleCenter };
+            sub.normal.textColor = new Color(0.72f, 0.76f, 0.82f);
+            GUI.Label(new Rect(r.x, r.y + 34f, r.width, 18f),
+                      "这些道具将带入下一环节使用", sub);
 
-            float y = r.y + 36f;
-            for (int i = 0; i < sorted.Count; i++)
+            float y = r.y + 60f;
+            for (int i = 0; i < list.Count; i++)
             {
-                var p = sorted[i];
-                var st = new GUIStyle(_small);
-                st.normal.textColor = p.playerColor.ToColor();
-                GUI.Label(new Rect(r.x + 16f, y, r.width - 32f, 22f),
-                          $"第{i + 1}名　{p.playerColor.ToLabel()}方　{p.Inventory.TotalValue} 分　" +
-                          p.Inventory.Describe(), st);
-                y += 26f;
+                var p = list[i];
+                bool isBot = p.GetComponent<AIBrain>() != null;
+
+                var nameSt = new GUIStyle(_small) { fontStyle = FontStyle.Bold };
+                nameSt.normal.textColor = p.playerColor.ToColor();
+                GUI.Label(new Rect(r.x + 18f, y, 100f, 22f),
+                          p.playerColor.ToLabel() + "方" + (isBot ? "(AI)" : ""), nameSt);
+
+                var itemSt = new GUIStyle(_small);
+                string text;
+                if (p.Inventory.Count == 0)
+                {
+                    itemSt.normal.textColor = new Color(0.55f, 0.57f, 0.62f);
+                    text = "空手离场";
+                }
+                else
+                {
+                    itemSt.normal.textColor = new Color(0.88f, 0.90f, 0.94f);
+                    var names = new List<string>();
+                    var items = p.Inventory.Items;
+                    for (int k = 0; k < items.Count; k++)
+                    {
+                        if (items[k] == null) continue;
+                        // 标出下一关能否使用，避免玩家误会
+                        bool usable = CarryOverData.ToNextLevelKind(items[k].itemId) != null;
+                        names.Add(usable ? items[k].displayName : items[k].displayName + "(仅收藏)");
+                    }
+                    text = string.Join("　", names);
+                }
+                GUI.Label(new Rect(r.x + 122f, y, r.width - 140f, 22f), text, itemSt);
+
+                y += rowH;
             }
+
+            var tip = new GUIStyle(_tiny) { alignment = TextAnchor.MiddleCenter };
+            tip.normal.textColor = new Color(0.62f, 0.66f, 0.72f);
+            string tipText = string.IsNullOrEmpty(mgr.nextSceneName)
+                ? "按 R 重开（未配置下一关场景）"
+                : "即将进入：" + mgr.nextSceneName;
+            GUI.Label(new Rect(r.x, r.yMax - 26f, r.width, 18f), tipText, tip);
         }
     }
 }

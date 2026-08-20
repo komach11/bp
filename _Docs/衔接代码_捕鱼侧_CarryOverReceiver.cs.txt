@@ -1,0 +1,138 @@
+// ══════════════════════════════════════════════════════════════
+//  ★这个文件属于「海岛捕鱼」场景（内网工程 PartyGame 命名空间）
+//
+//  放置位置：Assets/Scripts/PartyGame/Net/CarryOverReceiver.cs
+//
+//  本文件放在密室工程里只是为了版本管理与联调参考，
+//  实际生效需要复制到内网仓库对应目录。
+//  密室工程没有 Unity.Netcode 与 PartyGame 程序集，
+//  所以这里整体用 #if 包起来，避免污染密室的编译。
+// ══════════════════════════════════════════════════════════════
+
+#if PARTYGAME_FISHING   // 只在捕鱼工程里定义此宏后才编译
+
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace PartyGame.Net
+{
+    /// <summary>
+    /// 接收密室搜刮环节带过来的道具，在服务端发给对应玩家。
+    ///
+    /// ═══ 为什么这样设计 ═══
+    ///
+    /// 道具槽是 NetworkVariable，只有服务端能写（见 PartyPlayer 顶部注释）。
+    /// 所以注入必须满足两个条件：
+    ///   1. 在服务端执行
+    ///   2. 在 PartyPlayer 已 Spawn 之后
+    ///
+    /// PartyPlayerSpawner.SpawnFor() 末尾已经有现成的时机：
+    ///     var mgr = PartyGameManager.Instance;
+    ///     if (mgr != null && pp != null) mgr.EquipDefaultLoadoutFor(pp);
+    /// 原注释说明这里是为了避开 FindObjectsOfType 与 spawn 时序的竞争。
+    /// 我们蹭同一个时机即可。
+    ///
+    /// ═══ 接入方式（改一行）═══
+    ///
+    /// 把 PartyPlayerSpawner.SpawnFor() 里那句替换成：
+    ///     if (!CarryOverReceiver.TryEquipFromCarryOver(pp, slot))
+    ///     {
+    ///         var mgr = PartyGameManager.Instance;
+    ///         if (mgr != null && pp != null) mgr.EquipDefaultLoadoutFor(pp);
+    ///     }
+    /// 即：有密室数据就用它，没有（直接从大厅开局）就退回默认装备。
+    /// </summary>
+    public static class CarryOverReceiver
+    {
+        /// <summary>
+        /// 密室道具 id → 本场景的 ItemKind。
+        /// 与密室侧 CarryOverData._toNextLevelKind 必须保持一致。
+        /// </summary>
+        static readonly Dictionary<string, ItemKind> _map
+            = new Dictionary<string, ItemKind>
+            {
+                { "net_large", ItemKind.LargeNet },
+                { "net_small", ItemKind.SmallNet },
+                { "knife",     ItemKind.Knife    },
+                { "mine",      ItemKind.Mine     },
+            };
+
+        /// <summary>
+        /// 上一环节（密室）交接过来的数据。
+        /// 由密室场景在切场景前填好；键是大厅槽位索引。
+        ///
+        /// ★不直接引用密室工程的 CarryOverData —— 两个场景在不同程序集，
+        ///   靠这个中间层解耦。密室侧切场景前调 Push() 写入。
+        /// </summary>
+        static readonly Dictionary<int, List<string>> _pending
+            = new Dictionary<int, List<string>>();
+
+        public static bool HasData => _pending.Count > 0;
+
+        /// <summary>密室场景在跳转前调用，把某槽位带出的道具 id 交进来。</summary>
+        public static void Push(int slotIndex, IEnumerable<string> itemIds)
+        {
+            if (itemIds == null) return;
+            _pending[slotIndex] = new List<string>(itemIds);
+        }
+
+        public static void Clear() => _pending.Clear();
+
+        /// <summary>
+        /// 给一名玩家发放密室带来的道具。
+        /// 返回 false 表示没有该槽位的数据，调用方应回退到默认装备。
+        ///
+        /// 只能在服务端调用（PartyGameManager.CanAuthor 内部已再判一次）。
+        /// </summary>
+        public static bool TryEquipFromCarryOver(PartyGame.PartyPlayer player, int slotIndex)
+        {
+            if (player == null) return false;
+            if (!_pending.TryGetValue(slotIndex, out var ids) || ids == null || ids.Count == 0)
+                return false;
+
+            var cfg = player.Config;
+            if (cfg == null)
+            {
+                Debug.LogWarning("[CarryOverReceiver] PartyPlayer.Config 为空，无法查 ItemDataSO");
+                return false;
+            }
+
+            int equipped = 0;
+            var names = new List<string>();
+
+            foreach (var id in ids)
+            {
+                if (!_map.TryGetValue(id, out var kind))
+                {
+                    // 密室里搜到但本场景没实现的道具（做饭/警察类），跳过
+                    continue;
+                }
+
+                var so = cfg.GetItemByKind(kind);
+                if (so == null)
+                {
+                    Debug.LogWarning($"[CarryOverReceiver] PartyGameConfig.allItems 里缺少 {kind}");
+                    continue;
+                }
+
+                // 槽位满了就替换最后一格，保证密室辛苦搜到的东西不被丢弃
+                if (!player.TryEquipItem(so)) player.ForceReplaceLastSlot(so);
+                equipped++;
+                names.Add(so.displayName);
+            }
+
+            if (equipped == 0)
+            {
+                // 带过来的全是本场景不认的道具 → 视为无数据，让调用方发默认装备，
+                // 否则玩家会空手开局。
+                Debug.Log($"[CarryOverReceiver] slot{slotIndex} 带来的道具本场景均无对应，回退默认装备");
+                return false;
+            }
+
+            Debug.Log($"[CarryOverReceiver] slot{slotIndex} 从密室带入：{string.Join("、", names)}");
+            return true;
+        }
+    }
+}
+
+#endif

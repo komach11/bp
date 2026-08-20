@@ -27,10 +27,15 @@ namespace BugParty.TopDown2D
         public CeilingDebrisSpawner debrisSpawner;
 
         [Header("★衔接下一关")]
-        [Tooltip("穿越完成后要加载的场景名。留空则只打印日志，方便单独测试本环节")]
+        [Tooltip("穿越完成后要加载的场景名。留空则只打印日志，方便单独测试本环节。\n" +
+                 "衔接海岛捕鱼时填：GameScene_PartyFishing")]
         public string nextSceneName = "";
 
-        [Tooltip("勾选后穿越结束自动重开本环节，方便反复测试")]
+        [Tooltip("结算清单停留时长。玩家要看清自己带走了什么再进下一关")]
+        [Min(0f)] public float settlementDisplayTime = 4f;
+
+        [Tooltip("勾选后穿越结束自动重开本环节，方便反复测试。\n" +
+                 "★配了 nextSceneName 时应关掉，否则会先重开而不是跳场景")]
         public bool loopForTesting = true;
 
         [Header("调试")]
@@ -212,9 +217,15 @@ namespace BugParty.TopDown2D
             // ═══ Finished ═══
             SetPhase(RoundPhase.Finished);
             LogSettlement();
+
+            // ★先让结算界面停留一会儿，玩家要看清自己带走了什么，
+            //   否则一进 Finished 就切场景，清单一闪而过。
+            yield return new WaitForSeconds(settlementDisplayTime);
+
             HandoffToNextLevel();
 
-            if (loopForTesting)
+            // ★配了下一关就不再循环重开，否则两者会打架
+            if (loopForTesting && string.IsNullOrEmpty(nextSceneName))
             {
                 yield return new WaitForSeconds(1.5f);
                 StartRound();
@@ -394,33 +405,137 @@ namespace BugParty.TopDown2D
         }
 
         /// <summary>
-        /// ★衔接下一关。把各玩家带走的道具导出，供下一个玩法场景读取。
+        /// ★衔接下一关。把各玩家带走的道具导出到 CarryOverData，
+        /// 供下一个玩法场景（当前是海岛捕鱼）的服务端读取并发放。
         /// </summary>
         void HandoffToNextLevel()
         {
-            // 导出携带数据。正式版应写入一个跨场景的静态类或存档
-            var sb = new System.Text.StringBuilder("[Room2D] 携带进入下一关：\n");
+            CarryOverData.Clear();
+            CarryOverData.SourceScene =
+                UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+
             for (int i = 0; i < players.Count; i++)
             {
                 var p = players[i];
                 if (p == null) continue;
 
-                var ids = p.Inventory.ExportIds();
-                sb.Append($"  {p.playerColor.ToLabel()}方 → [{string.Join(", ", ids)}]\n");
+                var loadout = new CarriedLoadout
+                {
+                    // PlayerColor 的 0~3 正好对应大厅槽位 0~3
+                    slotIndex = (int)p.playerColor,
+                    isBot = p.GetComponent<AIBrain>() != null,
+                    color = p.playerColor,
+                };
 
-                CarryOverData.Set(p.playerColor, ids);
-            }
-            if (verboseLog) Debug.Log(sb.ToString());
+                var items = p.Inventory.Items;
+                for (int k = 0; k < items.Count; k++)
+                {
+                    var it = items[k];
+                    if (it == null) continue;
+                    loadout.itemIds.Add(it.itemId);
+                    loadout.itemNames.Add(it.displayName);
+                }
 
-            if (!string.IsNullOrEmpty(nextSceneName))
-            {
-                if (verboseLog) Debug.Log($"[Room2D] 加载下一关场景：{nextSceneName}");
-                UnityEngine.SceneManagement.SceneManager.LoadScene(nextSceneName);
+                CarryOverData.Set(loadout);
             }
-            else if (verboseLog)
+
+            if (verboseLog)
+                Debug.Log("[Room2D] 携带进入下一关：\n" + CarryOverData.Dump());
+
+            PushToNextLevelReceiver();
+            LoadNextScene();
+        }
+
+        /// <summary>
+        /// 把交接数据推给下一关的接收端。
+        ///
+        /// 用反射而非直接引用：密室与捕鱼在不同程序集，
+        /// 密室要能脱离捕鱼工程单独编译与测试。
+        /// 找不到接收端时静默跳过（单独测试本环节的情形）。
+        /// </summary>
+        void PushToNextLevelReceiver()
+        {
+            var t = System.Type.GetType("PartyGame.Net.CarryOverReceiver");
+            if (t == null) return;   // 不在捕鱼工程里，正常
+
+            var clear = t.GetMethod("Clear",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            var push = t.GetMethod("Push",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            if (push == null) return;
+
+            clear?.Invoke(null, null);
+
+            foreach (var l in CarryOverData.All)
             {
-                Debug.Log("[Room2D] nextSceneName 为空，停留在本场景（单独测试模式）");
+                if (l == null) continue;
+                push.Invoke(null, new object[] { l.slotIndex, l.itemIds });
             }
+
+            if (verboseLog)
+                Debug.Log($"[Room2D] 已推送 {CarryOverData.SlotCount} 个槽位的携带数据给下一关");
+        }
+
+        /// <summary>
+        /// 加载下一个场景。
+        ///
+        /// ★联网时必须走 NetworkSceneManager 而非 SceneManager.LoadScene，
+        ///   否则只有主机切场景、客户端留在原地。
+        ///   这里用反射探测 Netcode 是否在运行，让本工程不硬依赖 Netcode 程序集——
+        ///   密室既要能单机独立测试，也要能作为联网流程的一环。
+        /// </summary>
+        void LoadNextScene()
+        {
+            if (string.IsNullOrEmpty(nextSceneName))
+            {
+                if (verboseLog)
+                    Debug.Log("[Room2D] nextSceneName 为空，停留在本场景（单独测试模式）");
+                return;
+            }
+
+            if (TryNetworkSceneLoad(nextSceneName)) return;
+
+            if (verboseLog) Debug.Log($"[Room2D] 单机加载下一关：{nextSceneName}");
+            UnityEngine.SceneManagement.SceneManager.LoadScene(nextSceneName);
+        }
+
+        /// <summary>
+        /// 若 Netcode 正在以服务端身份运行，用它的 SceneManager 切场景（全端同步）。
+        /// 返回是否已接管。
+        /// </summary>
+        bool TryNetworkSceneLoad(string sceneName)
+        {
+            var nmType = System.Type.GetType("Unity.Netcode.NetworkManager, Unity.Netcode.Runtime");
+            if (nmType == null) return false;   // 工程未装 Netcode，走单机分支
+
+            var singletonProp = nmType.GetProperty("Singleton",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            var nm = singletonProp?.GetValue(null);
+            if (nm == null) return false;
+
+            bool isListening = (bool)(nmType.GetProperty("IsListening")?.GetValue(nm) ?? false);
+            bool isServer = (bool)(nmType.GetProperty("IsServer")?.GetValue(nm) ?? false);
+            if (!isListening) return false;
+
+            if (!isServer)
+            {
+                // 客户端不切场景，等服务端广播
+                if (verboseLog)
+                    Debug.Log("[Room2D] 联网客户端：等待服务端切换场景");
+                return true;
+            }
+
+            var sceneMgr = nmType.GetProperty("SceneManager")?.GetValue(nm);
+            if (sceneMgr == null) return false;
+
+            var loadMethod = sceneMgr.GetType().GetMethod("LoadScene");
+            if (loadMethod == null) return false;
+
+            if (verboseLog)
+                Debug.Log($"[Room2D] 联网服务端：广播加载 {sceneName}");
+            loadMethod.Invoke(sceneMgr,
+                new object[] { sceneName, UnityEngine.SceneManagement.LoadSceneMode.Single });
+            return true;
         }
 
         void Update()
@@ -459,25 +574,5 @@ namespace BugParty.TopDown2D
             }
             return best;
         }
-    }
-
-    /// <summary>
-    /// ★跨关卡携带数据。搜刮结束后把各人道具存这里，下一个玩法场景直接读。
-    /// 静态类，跨场景不丢失。
-    /// </summary>
-    public static class CarryOverData
-    {
-        static readonly Dictionary<PlayerColor, List<string>> _carried
-            = new Dictionary<PlayerColor, List<string>>();
-
-        public static void Set(PlayerColor color, List<string> itemIds)
-            => _carried[color] = new List<string>(itemIds);
-
-        public static List<string> Get(PlayerColor color)
-            => _carried.TryGetValue(color, out var v) ? v : new List<string>();
-
-        public static void Clear() => _carried.Clear();
-
-        public static bool HasData => _carried.Count > 0;
     }
 }

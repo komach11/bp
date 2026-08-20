@@ -192,19 +192,58 @@ namespace BugParty.TopDown2D
         [Header("═══ 道具池 ═══")]
         public List<ThemeItemPool> itemPools = new List<ThemeItemPool>();
 
+        [Tooltip("★只掉落能在下一个场景使用的道具。\n\n" +
+                 "开启后，搜索容器只会产出 carryableItemIds 里列出的道具。\n" +
+                 "当前下一关是海岛捕鱼，它只认 4 种道具（大/小渔网、小刀、水雷），\n" +
+                 "所以做饭与警察主题的道具即使在池子里也不会掉出来。\n\n" +
+                 "关掉则按 RoomTheme 正常掉落全部道具（做后续场景时再关）。")]
+        public bool restrictToCarryableItems = true;
+
+        [Tooltip("允许携带进入下一关的道具 id。\n" +
+                 "需与下一关的道具体系对得上，否则带过去无法使用。")]
+        public List<string> carryableItemIds = new List<string>
+        {
+            "net_large", "net_small", "knife", "mine"
+        };
+
         // ── 查询 ──────────────────────────────────────
+
+        /// <summary>这个道具是否允许带进下一关。</summary>
+        public bool IsCarryable(ItemDefinition item)
+        {
+            if (item == null) return false;
+            if (!restrictToCarryableItems) return true;
+            return carryableItemIds != null && carryableItemIds.Contains(item.itemId);
+        }
 
         public List<ItemDefinition> GetPool(RoomTheme theme)
         {
+            List<ItemDefinition> pool = null;
+
             for (int i = 0; i < itemPools.Count; i++)
                 if (itemPools[i] != null && itemPools[i].theme == theme && itemPools[i].items.Count > 0)
-                    return itemPools[i].items;
+                { pool = itemPools[i].items; break; }
 
-            for (int i = 0; i < itemPools.Count; i++)
-                if (itemPools[i] != null && itemPools[i].items.Count > 0)
-                    return itemPools[i].items;
+            // ★只在完全找不到指定主题时才退回其他池。
+            //   原先无条件退回会导致设了 Fishing 主题却掉出做饭道具。
+            if (pool == null)
+            {
+                for (int i = 0; i < itemPools.Count; i++)
+                    if (itemPools[i] != null && itemPools[i].items.Count > 0)
+                    { pool = itemPools[i].items; break; }
+            }
 
-            return new List<ItemDefinition>();
+            if (pool == null) return new List<ItemDefinition>();
+
+            // 按可携带清单过滤
+            if (!restrictToCarryableItems) return pool;
+
+            var filtered = new List<ItemDefinition>(pool.Count);
+            for (int i = 0; i < pool.Count; i++)
+                if (IsCarryable(pool[i])) filtered.Add(pool[i]);
+
+            // 过滤后为空说明配置有误，退回未过滤的池，至少不会搜不到东西
+            return filtered.Count > 0 ? filtered : pool;
         }
 
         // ═══════════════════════════════════════════════
