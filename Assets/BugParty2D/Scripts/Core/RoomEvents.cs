@@ -12,6 +12,17 @@ namespace BugParty.TopDown2D
         public static event Action<PlayerActor, ItemDefinition> OnItemCollected;
         public static event Action<PlayerActor, ItemDefinition> OnItemKnockedOut;
         public static event Action<PlayerActor, PlayerActor> OnElbowHit;
+
+        /// <summary>
+        /// ★挥肘瞬间（不论是否命中）。与 OnElbowHit 的区别：
+        /// 挥空也需要挥臂动作与破风音，否则玩家按了键却毫无反馈，会以为技能没触发。
+        /// 参数：出手者
+        /// </summary>
+        public static event Action<PlayerActor> OnElbowSwing;
+
+        /// <summary>★搜索完成的那一刻。参数：玩家、容器</summary>
+        public static event Action<PlayerActor, SearchContainer> OnSearchCompleted;
+
         public static event Action<PlayerActor, SearchContainer> OnSearchStarted;
         public static event Action<PlayerActor, SearchContainer> OnSearchInterrupted;
         public static event Action<PlayerActor> OnInventoryChanged;
@@ -50,6 +61,8 @@ namespace BugParty.TopDown2D
         public static void RaiseItemCollected(PlayerActor a, ItemDefinition i) => OnItemCollected?.Invoke(a, i);
         public static void RaiseItemKnockedOut(PlayerActor a, ItemDefinition i) => OnItemKnockedOut?.Invoke(a, i);
         public static void RaiseElbowHit(PlayerActor a, PlayerActor v) => OnElbowHit?.Invoke(a, v);
+        public static void RaiseElbowSwing(PlayerActor a) => OnElbowSwing?.Invoke(a);
+        public static void RaiseSearchCompleted(PlayerActor a, SearchContainer c) => OnSearchCompleted?.Invoke(a, c);
         public static void RaiseSearchStarted(PlayerActor a, SearchContainer c) => OnSearchStarted?.Invoke(a, c);
         public static void RaiseSearchInterrupted(PlayerActor a, SearchContainer c) => OnSearchInterrupted?.Invoke(a, c);
         public static void RaiseInventoryChanged(PlayerActor a) => OnInventoryChanged?.Invoke(a);

@@ -157,6 +157,72 @@ namespace BugParty.TopDown2D
         {
             if (_bar != null && _occupant != null && _occupant.Search != null)
                 _bar.SetFill(_occupant.Search.Progress01);
+
+            UpdateSearchShake();
+        }
+
+        // ══════════════════════════════════════════════
+        //  被翻找时的晃动
+        //  原先搜索期间容器一动不动，只有一根读条，看不出「正在被翻」。
+        //  这里让容器自己抖起来 —— 视觉体在 ArtPivot/Art 子节点上，
+        //  抖它不会影响碰撞盒（碰撞盒是父节点自己的 BoxCollider）。
+        // ══════════════════════════════════════════════
+
+        [Header("搜索晃动（表现）")]
+        [Tooltip("被翻找时容器晃动幅度（米）。0 = 关闭")]
+        public float shakeAmount = 0.035f;
+
+        [Tooltip("晃动频率（次/秒）")]
+        public float shakeSpeed = 13f;
+
+        [Tooltip("被翻找时的倾斜角度，比纯位移更有「被扒开」的感觉")]
+        public float shakeTilt = 2.2f;
+
+        Transform _shakeTarget;
+        Vector3 _shakeRestPos;
+        Quaternion _shakeRestRot;
+        bool _shakeRestCaptured;
+        float _shakePhase;
+
+        void UpdateSearchShake()
+        {
+            if (shakeAmount <= 0.0001f && shakeTilt <= 0.01f) return;
+
+            if (!_shakeRestCaptured)
+            {
+                // 优先抖视觉子节点。美术模式下是 ArtPivot，占位模式下没有子节点就抖自己
+                var pivot = transform.Find("ArtPivot");
+                _shakeTarget = pivot != null ? pivot : transform;
+                _shakeRestPos = _shakeTarget.localPosition;
+                _shakeRestRot = _shakeTarget.localRotation;
+                _shakeRestCaptured = true;
+            }
+            if (_shakeTarget == null) return;
+
+            bool beingSearched = _occupant != null
+                && _occupant.Search != null
+                && _occupant.Search.IsSearching
+                && _occupant.Search.CurrentTarget == this;
+
+            if (beingSearched)
+            {
+                _shakePhase += Time.deltaTime * shakeSpeed;
+
+                // 两个不同频率叠加，避免看起来像规律的机械振动
+                float sx = Mathf.Sin(_shakePhase) * shakeAmount;
+                float sz = Mathf.Sin(_shakePhase * 1.37f + 1.1f) * shakeAmount * 0.7f;
+                float tilt = Mathf.Sin(_shakePhase * 0.83f) * shakeTilt;
+
+                _shakeTarget.localPosition = _shakeRestPos + new Vector3(sx, 0f, sz);
+                _shakeTarget.localRotation = _shakeRestRot * Quaternion.Euler(tilt, 0f, tilt * 0.6f);
+            }
+            else if (_shakePhase != 0f)
+            {
+                // 平滑归位，避免松手瞬间跳回
+                _shakePhase = 0f;
+                _shakeTarget.localPosition = _shakeRestPos;
+                _shakeTarget.localRotation = _shakeRestRot;
+            }
         }
 
         void OnDrawGizmos()

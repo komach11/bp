@@ -9,8 +9,18 @@ namespace BugParty.TopDown2D
     /// </summary>
     public class ElbowAbility : MonoBehaviour
     {
+        [Header("打击感（表现，不影响判定）")]
+        [Tooltip("命中定格时长（真实秒）。0 = 关闭。\n" +
+                 "格斗游戏常用手法：命中瞬间把时间放慢一小下，制造「打到了」的顿感。\n" +
+                 "0.04~0.07 比较自然，超过 0.1 会明显卡顿。")]
+        [Range(0f, 0.15f)] public float hitStopDuration = 0.055f;
+
+        [Tooltip("定格期间的时间缩放。越小越顿")]
+        [Range(0.02f, 1f)] public float hitStopScale = 0.12f;
+
         PlayerActor _actor;
         RoomConfig _cfg;
+        PlayerActionFx _fx;
 
         float _cooldownUntil;
         float _windupUntil;
@@ -32,6 +42,8 @@ namespace BugParty.TopDown2D
         {
             _actor = actor;
             _cfg = cfg;
+            // 表现层可选。没挂也能跑，只是看不出动作
+            _fx = actor != null ? actor.GetComponent<PlayerActionFx>() : null;
         }
 
         public bool TryElbow()
@@ -48,6 +60,12 @@ namespace BugParty.TopDown2D
             _cooldownUntil = Time.time + _cfg.elbowCooldown;
             _windupUntil = Time.time + _cfg.elbowWindup;
             _pending = true;
+
+            // ★蓄力表现。放在这里而不是 Resolve，玩家按键瞬间就能看到反应，
+            //   否则 elbowWindup 那 0.12 秒里画面上毫无变化，手感像掉帧
+            if (_fx != null) _fx.PlayElbowWindup();
+
+            RoomEvents.RaiseElbowSwing(_actor);
             return true;
         }
 
@@ -62,6 +80,9 @@ namespace BugParty.TopDown2D
 
         void Resolve()
         {
+            // ★爆发表现。无论是否命中都播，挥空也要看得出「挥了一下」
+            if (_fx != null) _fx.PlayElbowStrike();
+
             var victims = FindVictimsInCone();
             for (int i = 0; i < victims.Count; i++)
             {
@@ -80,7 +101,16 @@ namespace BugParty.TopDown2D
             }
 
             if (victims.Count > 0)
-                RoomEvents.RaiseScreenShake(0.1f, 0.1f);
+            {
+                // 原先固定 0.1/0.1 太弱，几乎感觉不到。改为按命中人数递增，
+                // 一次打到两个人应该明显更「重」
+                float amount = 0.16f + 0.06f * (victims.Count - 1);
+                RoomEvents.RaiseScreenShake(amount, 0.14f);
+
+                // ★命中定格：极短的时间缩放，制造打击的「顿」感。
+                //   这是格斗游戏常用手法，成本极低但打击感提升明显
+                HitStop.Request(hitStopDuration, hitStopScale);
+            }
         }
 
         /// <summary>锥形范围内的对手。会考虑高度差。</summary>

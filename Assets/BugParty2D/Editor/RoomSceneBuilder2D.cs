@@ -985,6 +985,10 @@ namespace BugParty.TopDown2D.EditorTools
                 go.AddComponent<SearchAbility>();
                 go.AddComponent<ElbowAbility>();
 
+                // ★动作表现层。程序化驱动 visualRoot，不依赖美术资源，
+                //   接入真实 Animator 后可在 Inspector 关掉 enableProceduralMotion
+                go.AddComponent<PlayerActionFx>();
+
                 var actor = go.AddComponent<PlayerActor>();
                 actor.playerColor = colors[i];
                 actor.displayName = colors[i].ToLabel() + "方";

@@ -110,6 +110,11 @@ namespace BugParty.TopDown2D
             var item = c.ExtractItem();
             c.Release(_actor, false);
 
+            // ★先发完成事件，再判断有没有拿到东西。
+            //   即使容器已空（item == null），玩家也完成了一次搜索动作，
+            //   表现层需要知道「读条结束了」才能收起弯腰姿态。
+            RoomEvents.RaiseSearchCompleted(_actor, c);
+
             if (item != null && _actor.Inventory.TryAdd(item))
                 RoomEvents.RaiseItemCollected(_actor, item);
         }
