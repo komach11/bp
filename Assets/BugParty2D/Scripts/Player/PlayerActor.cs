@@ -351,7 +351,8 @@ namespace BugParty.TopDown2D
             if (mgr == null) return;
 
             // 终局塌陷阶段不触发惩罚，那是剧情性掉落
-            if (mgr.Phase == RoundPhase.Collapse || mgr.Phase == RoundPhase.Transition) return;
+            if (mgr.Phase == RoundPhase.Collapse || mgr.Phase == RoundPhase.Transition
+                || mgr.Phase == RoundPhase.Finished) return;
 
             // 掉得比地板基准面低于阈值 → 判定坠落
             float baseY = mgr.floorGrid != null ? mgr.floorGrid.origin.y : 0f;
@@ -371,7 +372,13 @@ namespace BugParty.TopDown2D
             // 掉落惩罚：丢道具
             if (_cfg.pitfallItemLoss > 0)
             {
-                for (int i = 0; i < _cfg.pitfallItemLoss; i++)
+                // ★保底：背包里至少留 pitfallKeepAtLeast 件。
+                //   搜索阶段地板反复塌，背包上限只有 2 件，如果每次踩空都扣，
+                //   玩家会全程白搜、最后空手进下一环节，交接给捕鱼场景的道具也没了。
+                int canLose = Mathf.Max(0, Inventory.Count - _cfg.pitfallKeepAtLeast);
+                int loseCount = Mathf.Min(_cfg.pitfallItemLoss, canLose);
+
+                for (int i = 0; i < loseCount; i++)
                 {
                     var item = Inventory.PopLatest();
                     if (item == null) break;

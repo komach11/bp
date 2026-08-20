@@ -147,6 +147,12 @@ namespace BugParty.TopDown2D
         public void StartRound()
         {
             if (_flow != null) StopCoroutine(_flow);
+
+            // 诊断计数清零，否则重开后数字会累加
+            _statCollected = 0;
+            _statPitfallLost = 0;
+            _statKnockedOut = 0;
+
             _flow = StartCoroutine(Flow());
         }
 
@@ -390,19 +396,48 @@ namespace BugParty.TopDown2D
             if (!verboseLog) return;
 
             var sb = new System.Text.StringBuilder("[Room2D] ═══ 本环节结算 ═══\n");
+
+            // ★诊断信息：全员空手时能立刻看出是「没搜到」还是「搜到又丢了」
+            sb.Append($"  主题 {theme} | 道具池 {config.GetPool(theme).Count} 种可掉落 | " +
+                      $"随机塌陷 {config.randomCollapseCount} 块 | " +
+                      $"踩空扣 {config.pitfallItemLoss} 件(保底留 {config.pitfallKeepAtLeast})\n");
+            sb.Append($"  全场累计：搜到 {_statCollected} 件 | 踩空丢 {_statPitfallLost} 件 | " +
+                      $"被肘击打掉 {_statKnockedOut} 件\n");
+
             var sorted = new List<PlayerActor>(players);
             sorted.RemoveAll(p => p == null);
-            sorted.Sort((a, b) => b.Inventory.TotalValue.CompareTo(a.Inventory.TotalValue));
+            sorted.Sort((a, b) => ((int)a.playerColor).CompareTo((int)b.playerColor));
 
             for (int i = 0; i < sorted.Count; i++)
             {
                 var p = sorted[i];
-                sb.Append($"  第{i + 1}名 {p.playerColor.ToLabel()}方 | " +
+                sb.Append($"  {p.playerColor.ToLabel()}方 | " +
                           $"{p.Inventory.Count}/{config.inventoryCapacity} 件 | " +
-                          $"{p.Inventory.TotalValue} 分 | {p.Inventory.Describe()}\n");
+                          $"{p.Inventory.Describe()}\n");
             }
             Debug.Log(sb.ToString());
         }
+
+        // ── 诊断计数（只用于结算日志）──────────────────
+        int _statCollected, _statPitfallLost, _statKnockedOut;
+
+        void OnEnable()
+        {
+            RoomEvents.OnItemCollected += CountCollected;
+            RoomEvents.OnItemKnockedOut += CountKnocked;
+            RoomEvents.OnPlayerPitfall += CountPitfall;
+        }
+
+        void OnDisable()
+        {
+            RoomEvents.OnItemCollected -= CountCollected;
+            RoomEvents.OnItemKnockedOut -= CountKnocked;
+            RoomEvents.OnPlayerPitfall -= CountPitfall;
+        }
+
+        void CountCollected(PlayerActor p, ItemDefinition i) => _statCollected++;
+        void CountKnocked(PlayerActor p, ItemDefinition i) => _statKnockedOut++;
+        void CountPitfall(PlayerActor p) => _statPitfallLost++;
 
         /// <summary>
         /// ★衔接下一关。把各玩家带走的道具导出到 CarryOverData，

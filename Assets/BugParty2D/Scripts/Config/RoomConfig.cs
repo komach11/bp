@@ -99,6 +99,12 @@ namespace BugParty.TopDown2D
         [Tooltip("坠落时掉落几件道具。0 表示不惩罚道具")]
         [Range(0, 3)] public int pitfallItemLoss = 1;
 
+        [Tooltip("★踩空惩罚的保底：背包里至少保留几件不会被扣。\n" +
+                 "搜索阶段地板会反复塌，而背包上限只有 2 件 —— 如果每次踩空都扣，\n" +
+                 "玩家很容易全程白搜，最后空手进下一环节，衔接给捕鱼场景的道具也没了。\n" +
+                 "设 1 = 最后一件保命；设 0 = 退回无保底的原行为。")]
+        [Range(0, 3)] public int pitfallKeepAtLeast = 1;
+
         // ═══════════════════════════════════════════════
         [Header("═══ 背包 ═══")]
         [Range(1, 6)] public int inventoryCapacity = 2;
