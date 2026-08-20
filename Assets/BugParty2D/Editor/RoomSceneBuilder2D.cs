@@ -1154,14 +1154,21 @@ namespace BugParty.TopDown2D.EditorTools
             if (c != null) Object.DestroyImmediate(c);
         }
 
+        /// <summary>
+        /// 给程序化 primitive 设色。
+        /// ★必须走 PipelineMat 而非 new Material(r.sharedMaterial)：
+        ///   CreatePrimitive 自带的是 Built-in Standard 材质，在 URP 工程里
+        ///   该 shader 不存在，复制它只会得到一个同样坏掉的洋红材质。
+        /// </summary>
         static void SetColor(Renderer r, Color c)
         {
-            if (r == null) return;
-            var mat = new Material(r.sharedMaterial);
-            mat.name = "Mat_" + r.gameObject.name;
-            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
-            if (mat.HasProperty("_Color")) mat.SetColor("_Color", c);
-            r.sharedMaterial = mat;
+            PipelineMat.Apply(r, c);
+        }
+
+        /// <summary>不受光设色。用于阴影片、发光条这类不需要打光的物件。</summary>
+        static void SetColorUnlit(Renderer r, Color c)
+        {
+            PipelineMat.Apply(r, c, unlit: true);
         }
 
         static void MarkDirty()

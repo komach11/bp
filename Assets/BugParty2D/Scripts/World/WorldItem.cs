@@ -53,12 +53,13 @@ namespace BugParty.TopDown2D
                 var r = visual.GetComponent<Renderer>();
                 if (r != null)
                 {
-                    var m = r.material;
                     var col = def.isRare
                         ? Color.Lerp(def.placeholderColor, new Color(1f, 0.85f, 0.2f), 0.5f)
                         : def.placeholderColor;
-                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", col);
-                    if (m.HasProperty("_Color")) m.SetColor("_Color", col);
+
+                    // ★走 PipelineMat 换 shader，而不是只改 r.material 的颜色 ——
+                    //   CreatePrimitive 自带 Built-in Standard，URP 下是洋红
+                    PipelineMat.Apply(r, col);
                 }
             }
 

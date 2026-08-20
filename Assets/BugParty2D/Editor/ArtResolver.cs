@@ -202,17 +202,14 @@ namespace BugParty.TopDown2D
         }
 
         /// <summary>
-        /// 给 Renderer 设置颜色。会实例化材质副本，避免污染共享材质。
-        /// 同时兼容 Built-in 的 _Color 与 URP 的 _BaseColor。
+        /// 给 Renderer 设置颜色。
+        /// ★走 PipelineMat 而不是复制 sharedMaterial —— CreatePrimitive 自带的是
+        ///   Built-in Standard 材质，URP 工程里该 shader 不存在，复制它只会得到
+        ///   一个同样坏掉的洋红材质。PipelineMat 会按当前管线选正确的 shader。
         /// </summary>
         public static void SetColor(Renderer r, Color c)
         {
-            if (r == null) return;
-            var mat = new Material(r.sharedMaterial);
-            mat.name = "Mat_" + r.gameObject.name;
-            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
-            if (mat.HasProperty("_Color")) mat.SetColor("_Color", c);
-            r.sharedMaterial = mat;
+            PipelineMat.Apply(r, c);
         }
     }
 }

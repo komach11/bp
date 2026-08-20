@@ -82,12 +82,18 @@ namespace BugParty.TopDown2D
                 if (col != null) Destroy(col);
 
                 var rend = go.GetComponent<Renderer>();
+
+                // ★先换成当前管线可用的材质，再缓存引用。
+                //   CreatePrimitive 自带 Built-in Standard，URP 下渲染为洋红；
+                //   如果直接缓存 rend.material，后续改颜色都作用在坏材质上。
+                var mat = rend != null ? PipelineMat.Apply(rend, Color.white) : null;
+
                 var piece = new DebrisPiece
                 {
                     go = go,
                     tr = go.transform,
                     rend = rend,
-                    mat = rend != null ? rend.material : null,
+                    mat = mat,
                     busy = false
                 };
                 go.SetActive(false);

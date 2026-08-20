@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: RoomConfig2D
   m_EditorClassIdentifier: 
   introDuration: 3
-  searchDuration: 45
+  searchDuration: 5
   collapseDuration: 3.2
   transitionDuration: 1.6
   urgentThreshold: 12
@@ -100,6 +100,12 @@ MonoBehaviour:
     - {fileID: 11400000, guid: 6541814278113954ba13d7980b5bd81e, type: 2}
     - {fileID: 11400000, guid: 18db6122fff4b53488ab37f5abce7e0e, type: 2}
     - {fileID: 11400000, guid: 475f7745d02fcf94ba77f2135cd4f206, type: 2}
+  restrictToCarryableItems: 1
+  carryableItemIds:
+  - net_large
+  - net_small
+  - knife
+  - mine
   art: {fileID: 11400000, guid: 1ecdeb97807ad2c4b968d00c43333841, type: 2}
   characterPrefabs: []
   shadowMaterial: {fileID: 0}

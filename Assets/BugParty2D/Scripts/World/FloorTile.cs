@@ -50,7 +50,13 @@ namespace BugParty.TopDown2D
             _originPos = transform.localPosition;
 
             if (tileRenderer == null) tileRenderer = GetComponent<Renderer>();
-            if (tileRenderer != null) _mat = tileRenderer.material;
+            if (tileRenderer != null)
+            {
+                // ★shader 在当前管线下失效时先换掉，再缓存材质引用。
+                //   否则后续 ApplyColor 都作用在坏掉的 Standard 材质上（URP 下洋红）
+                PipelineMat.RepairIfBroken(tileRenderer);
+                _mat = tileRenderer.material;
+            }
         }
 
         void Start()

@@ -75,31 +75,27 @@ namespace BugParty.TopDown2D
         {
             if (r == null) return;
 
-            var sh = Shader.Find("Universal Render Pipeline/Unlit");
-            if (sh == null) sh = Shader.Find("Unlit/Color");
-            if (sh == null) sh = Shader.Find("Sprites/Default");
+            // ★统一走 PipelineMat。它优先选 Sprites/Default —— 两个管线都内置可用、
+            //   自带 alpha 混合，不需要手动拼 _SrcBlend/_ZWrite 那套混合状态
+            //   （URP 各版本对 _Surface/_Blend 的处理不一致，手拼容易失效）
+            var m = PipelineMat.Apply(r, _color, unlit: true);
+            if (m != null)
+            {
+                m.name = "Mat_ImpactRing";
+                // 加法混合让冲击环有「炸开发光」的感觉
+                m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.One);
+                m.SetInt("_ZWrite", 0);
+                m.renderQueue = 3000;
+            }
 
-            var m = sh != null ? new Material(sh) : new Material(r.sharedMaterial);
-            m.name = "Mat_ImpactRing";
-
-            // 开透明混合
-            if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);
-            if (m.HasProperty("_Blend")) m.SetFloat("_Blend", 0f);
-            m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.One);
-            m.SetInt("_ZWrite", 0);
-            m.renderQueue = 3000;
-
-            ApplyColor(m, _color);
-            r.sharedMaterial = m;
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             r.receiveShadows = false;
         }
 
         static void ApplyColor(Material m, Color c)
         {
-            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
-            if (m.HasProperty("_Color")) m.SetColor("_Color", c);
+            PipelineMat.SetColorOn(m, c);
         }
 
         void Update()

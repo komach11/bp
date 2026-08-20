@@ -62,9 +62,17 @@ namespace BugParty.TopDown2D
         static void SetColorOn(Renderer r, Color c)
         {
             if (r == null) return;
-            var m = r.material;
-            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
-            if (m.HasProperty("_Color")) m.SetColor("_Color", c);
+
+            // ★首次必须换 shader 而不是只改 r.material 的颜色：
+            //   CreatePrimitive 自带 Built-in Standard，URP 下渲染为洋红，
+            //   改颜色救不回来。之后每帧调用只改颜色，避免反复 new Material。
+            if (PipelineMat.IsBroken(r))
+            {
+                PipelineMat.Apply(r, c, unlit: true);   // 读条不需要受光
+                return;
+            }
+
+            PipelineMat.SetColorOn(r.material, c);
         }
 
         void LateUpdate()
