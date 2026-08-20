@@ -89,7 +89,7 @@ MonoBehaviour:
       fitToSize: 1
   - key: "\u6295\u5F71\u4EEA\u7BB1"
     art:
-      prefab: {fileID: 0}
+      prefab: {fileID: 919132149155446097, guid: 6585c33bbbc05044589e437e2d2bc673, type: 3}
       scaleMul: 1
       yawOffset: 0
       yOffset: 0
