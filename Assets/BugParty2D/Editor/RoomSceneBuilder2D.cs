@@ -1036,9 +1036,23 @@ namespace BugParty.TopDown2D.EditorTools
                 go.AddComponent<SearchAbility>();
                 go.AddComponent<ElbowAbility>();
 
-                // ★动作表现层。程序化驱动 visualRoot，不依赖美术资源，
-                //   接入真实 Animator 后可在 Inspector 关掉 enableProceduralMotion
-                go.AddComponent<PlayerActionFx>();
+                // ★动作表现层。程序化驱动 visualRoot（Visual 节点本身），
+                //   与 Animator 驱动的骨骼在不同层级上，两者并存不冲突。
+                //   但有真动画后程序化幅度要压小 —— 否则弯腰/前冲会叠加两次，
+                //   看起来像角色在抽动。这里按是否接入 Animator 自动分档。
+                var fx = go.AddComponent<PlayerActionFx>();
+                bool hasRealAnim = go.GetComponent<PlayerAnimatorBridge>() != null;
+                if (hasRealAnim)
+                {
+                    // 骨骼动画已负责主要姿态，程序化只留一点「额外的重量感」
+                    fx.elbowWindupPull *= 0.35f;
+                    fx.elbowWindupTwist *= 0.35f;
+                    fx.elbowThrust *= 0.35f;
+                    fx.elbowLunge *= 0.35f;
+                    fx.searchLeanAngle *= 0.3f;
+                    fx.searchBobAmount *= 0.4f;
+                    fx.searchSwayAngle *= 0.3f;
+                }
 
                 var actor = go.AddComponent<PlayerActor>();
                 actor.playerColor = colors[i];

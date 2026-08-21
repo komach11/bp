@@ -115,10 +115,26 @@ namespace BugParty.TopDown2D
         public void ApplyTeamColor()
         {
             if (bodyRenderer == null) return;
-            var c = playerColor.ToColor();
             var m = bodyRenderer.material;
+            if (m == null) return;
+
+            // ★带贴图的美术模型不染色。
+            //   Standard/URP Lit 的 _Color(_BaseColor) 是「与贴图相乘」的着色，
+            //   给一张已经画好的角色贴图乘上纯红/纯蓝，结果是整只角色变成单色块，
+            //   纹理细节全部丢失。占位胶囊体没有贴图，才需要靠这个染色区分阵营。
+            //   有贴图时阵营辨识交给贴图本身（四个角色用四张不同纹理）与落地阴影。
+            if (HasMainTexture(m)) return;
+
+            var c = playerColor.ToColor();
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
             if (m.HasProperty("_Color")) m.SetColor("_Color", c);
+        }
+
+        static bool HasMainTexture(Material m)
+        {
+            if (m.HasProperty("_BaseMap") && m.GetTexture("_BaseMap") != null) return true;
+            if (m.HasProperty("_MainTex") && m.GetTexture("_MainTex") != null) return true;
+            return false;
         }
 
         void Update()
