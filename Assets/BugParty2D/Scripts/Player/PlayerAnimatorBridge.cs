@@ -106,6 +106,7 @@ namespace BugParty.TopDown2D
         {
             RoomEvents.OnJump += HandleJump;
             RoomEvents.OnLand += HandleLand;
+            RoomEvents.OnElbowSwing += HandleElbowSwing;
             RoomEvents.OnElbowHit += HandleElbowHit;
             RoomEvents.OnPlayerPitfall += HandlePitfall;
         }
@@ -114,6 +115,7 @@ namespace BugParty.TopDown2D
         {
             RoomEvents.OnJump -= HandleJump;
             RoomEvents.OnLand -= HandleLand;
+            RoomEvents.OnElbowSwing -= HandleElbowSwing;
             RoomEvents.OnElbowHit -= HandleElbowHit;
             RoomEvents.OnPlayerPitfall -= HandlePitfall;
         }
@@ -172,12 +174,26 @@ namespace BugParty.TopDown2D
             if (_hasLand) animator.SetTrigger(T_Land);
         }
 
+        /// <summary>
+        /// 挥出瞬间 —— 挥拳动画在这里触发。
+        ///
+        /// ★原先这个 Trigger 挂在 OnElbowHit 上，导致**挥空时角色完全不播挥拳动画**：
+        /// 玩家按了键，角色一动不动，看起来像技能失效。而 OnElbowSwing 无论
+        /// 是否命中都会发，正是挥拳动画该用的时机。
+        /// </summary>
+        void HandleElbowSwing(PlayerActor who)
+        {
+            if (who != _actor || animator == null) return;
+            if (_hasElbow) animator.SetTrigger(T_Elbow);
+        }
+
         void HandleElbowHit(PlayerActor attacker, PlayerActor victim)
         {
             if (animator == null) return;
 
-            // 同一个事件里分别处理「我打人」和「我被打」
-            if (attacker == _actor && _hasElbow) animator.SetTrigger(T_Elbow);
+            // ★这里只处理「我被打」。「我打人」的挥拳动画已由 HandleElbowSwing 负责，
+            //   在这里再触发一次会让 Trigger 在同一帧被设两遍，
+            //   Animator 可能把动画重头播一次，看起来像卡了一下。
             if (victim == _actor && _hasGetHit) animator.SetTrigger(T_GetHit);
         }
 

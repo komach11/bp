@@ -35,6 +35,8 @@ namespace BugParty.TopDown2D
         [Tooltip("★挥肘的破风音。不论是否命中都播，命中时再叠 sfxElbowHit。\n" +
                  "没有它挥空毫无声音反馈，玩家会以为技能没触发")]
         public AudioClip sfxElbowSwing;
+        [Tooltip("肘击起手的蓄力音。比 sfxElbowSwing 早 elbowWindup（默认 0.12 秒）")]
+        public AudioClip sfxElbowWindup;
         public AudioClip sfxItemKnockedOut;
         public AudioClip sfxJump;
         public AudioClip sfxLand;
@@ -85,8 +87,18 @@ namespace BugParty.TopDown2D
         public Vector2 alarmVolumeRange = new Vector2(0.25f, 0.85f);
 
         [Header("═══ 粒子特效 Prefab ═══")]
-        [Tooltip("肘击命中的撞击星星")]
+        [Tooltip("肘击命中的撞击星星。\n" +
+                 "★这是「场景级、不跟随角色」的特效。若需要跟随手部或朝向正确的\n" +
+                 "冲击波，用玩家身上的 ElbowVfxHook —— 两者可以同时用。")]
         public GameObject vfxElbowImpact;
+
+        [Tooltip("肘击挥出（不论是否命中）。适合放留在原地的破风弧线。\n" +
+                 "★挥空也会播 —— 原先挥空只有音效，视觉上毫无反馈。")]
+        public GameObject vfxElbowSwing;
+
+        [Tooltip("肘击蓄力起手。elbowWindup 那 0.12 秒的预备提示。")]
+        public GameObject vfxElbowWindup;
+
         public GameObject vfxItemPickup;
         [Tooltip("地板开裂的碎屑与红光")]
         public GameObject vfxTileCracking;
@@ -138,6 +150,7 @@ namespace BugParty.TopDown2D
             RoomEvents.OnItemKnockedOut += OnItemKnockedOut;
             RoomEvents.OnElbowHit += OnElbowHit;
             RoomEvents.OnElbowSwing += OnElbowSwing;
+            RoomEvents.OnElbowWindup += OnElbowWindup;
             RoomEvents.OnJump += OnJump;
             RoomEvents.OnLand += OnLand;
             RoomEvents.OnTileCracking += OnTileCracking;
@@ -157,6 +170,7 @@ namespace BugParty.TopDown2D
             RoomEvents.OnItemKnockedOut -= OnItemKnockedOut;
             RoomEvents.OnElbowHit -= OnElbowHit;
             RoomEvents.OnElbowSwing -= OnElbowSwing;
+            RoomEvents.OnElbowWindup -= OnElbowWindup;
             RoomEvents.OnJump -= OnJump;
             RoomEvents.OnLand -= OnLand;
             RoomEvents.OnTileCracking -= OnTileCracking;
@@ -182,8 +196,18 @@ namespace BugParty.TopDown2D
 
         void Spawn(GameObject prefab, Vector3 at)
         {
+            Spawn(prefab, at, Quaternion.identity);
+        }
+
+        /// <summary>
+        /// 带朝向的生成。
+        /// ★锥形冲击波、平面刀光这类有方向性的特效必须传朝向 ——
+        /// 用 Quaternion.identity 会让它们永远朝着世界 +Z，与实际攻击方向无关。
+        /// </summary>
+        void Spawn(GameObject prefab, Vector3 at, Quaternion rot)
+        {
             if (prefab == null) return;
-            var go = Instantiate(prefab, at, Quaternion.identity);
+            var go = Instantiate(prefab, at, rot);
             if (vfxLifetime > 0f) Destroy(go, vfxLifetime);
         }
 
@@ -208,8 +232,23 @@ namespace BugParty.TopDown2D
 
         void OnElbowSwing(PlayerActor p)
         {
+            if (p == null) return;
             // 破风音音调抖动大一些，连续挥肘才不会像复读机
-            Play(sfxElbowSwing, p != null ? p.transform.position : Vector3.zero, 0.12f);
+            Play(sfxElbowSwing, p.transform.position, 0.12f);
+
+            // 挥出特效朝向角色正面 —— 破风弧线得对着挥击方向
+            Spawn(vfxElbowSwing,
+                  p.transform.position + Vector3.up * 0.9f,
+                  Quaternion.LookRotation(p.transform.forward, Vector3.up));
+        }
+
+        void OnElbowWindup(PlayerActor p)
+        {
+            if (p == null) return;
+            Play(sfxElbowWindup, p.transform.position, 0.08f);
+            Spawn(vfxElbowWindup,
+                  p.transform.position + Vector3.up * 0.9f,
+                  Quaternion.LookRotation(p.transform.forward, Vector3.up));
         }
 
         void OnItemCollected(PlayerActor p, ItemDefinition item)
@@ -234,7 +273,17 @@ namespace BugParty.TopDown2D
             if (victim == null) return;
             var pos = victim.transform.position + Vector3.up * 0.9f;
             Play(sfxElbowHit, pos, 0.1f);
-            Spawn(vfxElbowImpact, pos);
+
+            // 撞击特效朝向「攻击者 → 受击者」，冲击波方向才对
+            var rot = Quaternion.identity;
+            if (attacker != null)
+            {
+                var dir = victim.transform.position - attacker.transform.position;
+                dir.y = 0f;
+                if (dir.sqrMagnitude > 1e-4f)
+                    rot = Quaternion.LookRotation(dir.normalized, Vector3.up);
+            }
+            Spawn(vfxElbowImpact, pos, rot);
         }
 
         void OnJump(PlayerActor p)

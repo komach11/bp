@@ -1036,6 +1036,11 @@ namespace BugParty.TopDown2D.EditorTools
                 go.AddComponent<SearchAbility>();
                 go.AddComponent<ElbowAbility>();
 
+                // ★肘击特效挂钩。四个槽位（蓄力/挥出/命中/被击中）都留空，
+                //   等美术给了粒子 Prefab 直接在 Inspector 拖进来即可。
+                //   每个玩家各有一份 —— 可以给不同角色配不同特效。
+                var elbowVfx = go.AddComponent<ElbowVfxHook>();
+
                 // ★动作表现层。程序化驱动 visualRoot（Visual 节点本身），
                 //   与 Animator 驱动的骨骼在不同层级上，两者并存不冲突。
                 //   但有真动画后程序化幅度要压小 —— 否则弯腰/前冲会叠加两次，
@@ -1062,6 +1067,12 @@ namespace BugParty.TopDown2D.EditorTools
                 actor.handAnchor = hand.transform;
                 actor.elbowOrigin = elbow.transform;
                 actor.shadowQuad = shadow.transform;
+
+                // ★挂点在建场时就写进 ElbowVfxHook，不依赖它的 Awake。
+                //   Awake 在 Editor 模式下不执行，所以场景保存时字段会是空的 ——
+                //   下次打开场景看到 Inspector 里挂点为 None 会以为配错了。
+                elbowVfx.windupAnchor = hand.transform;
+                elbowVfx.swingAnchor = elbow.transform;
 
                 if (isHuman)
                 {

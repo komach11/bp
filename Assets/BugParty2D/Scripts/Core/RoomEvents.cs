@@ -20,6 +20,17 @@ namespace BugParty.TopDown2D
         /// </summary>
         public static event Action<PlayerActor> OnElbowSwing;
 
+        /// <summary>
+        /// ★肘击蓄力开始（按键成功那一刻，早于 OnElbowSwing 一个 elbowWindup）。
+        ///
+        /// 为什么需要单独一个事件：elbowWindup 默认 0.12 秒，这段时间里如果画面
+        /// 毫无变化，按键手感会像掉帧。表现层需要一个明确的时机来放预备特效
+        /// （拳套发光、能量汇聚）与预备音。
+        ///
+        /// 参数：出手者
+        /// </summary>
+        public static event Action<PlayerActor> OnElbowWindup;
+
         /// <summary>★搜索完成的那一刻。参数：玩家、容器</summary>
         public static event Action<PlayerActor, SearchContainer> OnSearchCompleted;
 
@@ -62,6 +73,7 @@ namespace BugParty.TopDown2D
         public static void RaiseItemKnockedOut(PlayerActor a, ItemDefinition i) => OnItemKnockedOut?.Invoke(a, i);
         public static void RaiseElbowHit(PlayerActor a, PlayerActor v) => OnElbowHit?.Invoke(a, v);
         public static void RaiseElbowSwing(PlayerActor a) => OnElbowSwing?.Invoke(a);
+        public static void RaiseElbowWindup(PlayerActor a) => OnElbowWindup?.Invoke(a);
         public static void RaiseSearchCompleted(PlayerActor a, SearchContainer c) => OnSearchCompleted?.Invoke(a, c);
         public static void RaiseSearchStarted(PlayerActor a, SearchContainer c) => OnSearchStarted?.Invoke(a, c);
         public static void RaiseSearchInterrupted(PlayerActor a, SearchContainer c) => OnSearchInterrupted?.Invoke(a, c);
@@ -83,6 +95,11 @@ namespace BugParty.TopDown2D
             OnItemCollected = null;
             OnItemKnockedOut = null;
             OnElbowHit = null;
+            // ★这三个之前漏在 ClearAll 外面 —— 场景切换后旧订阅会残留，
+            //   指向已销毁对象的委托被调用时会抛 MissingReferenceException
+            OnElbowSwing = null;
+            OnElbowWindup = null;
+            OnSearchCompleted = null;
             OnSearchStarted = null;
             OnSearchInterrupted = null;
             OnInventoryChanged = null;

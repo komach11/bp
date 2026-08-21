@@ -65,7 +65,13 @@ namespace BugParty.TopDown2D
             //   否则 elbowWindup 那 0.12 秒里画面上毫无变化，手感像掉帧
             if (_fx != null) _fx.PlayElbowWindup();
 
-            RoomEvents.RaiseElbowSwing(_actor);
+            // ★这里发 Windup 而不是 Swing。
+            //   原先此处发的是 RaiseElbowSwing，但那与事件语义不符 ——
+            //   OnElbowSwing 的注释写的是「挥肘瞬间」，实际却在按键瞬间触发，
+            //   导致破风音比挥臂动作早响 0.12 秒。
+            //   现在拆开：按键 → OnElbowWindup（预备特效/蓄力音）
+            //             判定 → OnElbowSwing（挥动残影/破风音）
+            RoomEvents.RaiseElbowWindup(_actor);
             return true;
         }
 
@@ -82,6 +88,11 @@ namespace BugParty.TopDown2D
         {
             // ★爆发表现。无论是否命中都播，挥空也要看得出「挥了一下」
             if (_fx != null) _fx.PlayElbowStrike();
+
+            // ★挥出事件在这里发 —— 与手臂真正挥动的时刻对齐。
+            //   放在 TryElbow 里会让破风音早响 elbowWindup（0.12 秒），
+            //   听起来像声音与动作脱节。
+            RoomEvents.RaiseElbowSwing(_actor);
 
             var victims = FindVictimsInCone();
             for (int i = 0; i < victims.Count; i++)
