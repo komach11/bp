@@ -52,22 +52,46 @@ namespace BugParty.TopDown2D.EditorTools
                 "是否继续？", "开始", "取消"))
                 return;
 
+            var map = RebindAll(out string report);
+            Debug.Log("[Rebind] " + report);
+
+            if (map.Count == 0)
+            {
+                EditorUtility.DisplayDialog("没有生成任何动画",
+                    "所有 clip 的骨骼路径都无法映射到模型骨架。\n\n" + report, "好");
+                return;
+            }
+
+            EditorUtility.DisplayDialog("完成",
+                $"已生成 {map.Count} 个重绑定动画到\n{OutDir}\n\n" +
+                "下一步：\n" +
+                "① 打开 CharacterAnimSet，把槽位换成 Clips/ 目录下的新 .anim\n" +
+                "② 执行「BugParty2D ▸ 重建角色动画」\n\n" +
+                "或者直接执行「BugParty2D ▸ 自动填充动作表（用重绑定动画）」。", "好");
+        }
+
+        /// <summary>
+        /// 执行全部重绑定，返回「干净名 → 新 clip」映射。
+        /// 供 SCPCharacterSetup 的完整流程直接调用，不弹任何对话框。
+        /// </summary>
+        public static Dictionary<string, AnimationClip> RebindAll(out string report)
+        {
+            var outMap = new Dictionary<string, AnimationClip>();
+
             // ① 模型骨骼路径表
             var bonePaths = BuildBonePathMap();
             if (bonePaths.Count == 0)
             {
-                EditorUtility.DisplayDialog("失败",
-                    $"读不到模型骨架：{ModelPath}", "好");
-                return;
+                report = $"读不到模型骨架：{ModelPath}";
+                return outMap;
             }
-            Debug.Log($"[Rebind] 模型骨骼 {bonePaths.Count} 根");
 
             // ② 逐个 clip 重绑定
             Directory.CreateDirectory(OutDir);
             AssetDatabase.Refresh();
 
             int made = 0, skipped = 0;
-            var report = new List<string>();
+            var lines = new List<string>();
 
             try
             {
@@ -91,7 +115,7 @@ namespace BugParty.TopDown2D.EditorTools
                         if (res.matched == 0) { skipped++; continue; }
 
                         made++;
-                        report.Add($"{clean}: {res.matched}/{res.total} 曲线已重绑");
+                        lines.Add($"{clean}: {res.matched}/{res.total}");
                     }
                 }
             }
@@ -101,23 +125,20 @@ namespace BugParty.TopDown2D.EditorTools
                 AssetDatabase.Refresh();
             }
 
-            Debug.Log($"[Rebind] 生成 {made} 个 .anim，跳过 {skipped} 个（无可映射曲线）");
-            foreach (var r in report) Debug.Log("[Rebind]   " + r);
-
-            if (made == 0)
+            // ★重要：StopAssetEditing 之后才能可靠地 Load 出刚创建的资产
+            foreach (var f in Directory.GetFiles(OutDir, "*.anim", SearchOption.TopDirectoryOnly))
             {
-                EditorUtility.DisplayDialog("没有生成任何动画",
-                    "所有 clip 的骨骼路径都无法映射到模型骨架。\n" +
-                    "请改用 Humanoid 方案（接入 SCP 角色 完整流程）。", "好");
-                return;
+                var p = f.Replace('\\', '/');
+                var c = AssetDatabase.LoadAssetAtPath<AnimationClip>(p);
+                if (c == null) continue;
+                string key = Path.GetFileNameWithoutExtension(p);
+                outMap[key] = c;
             }
 
-            EditorUtility.DisplayDialog("完成",
-                $"已生成 {made} 个重绑定动画到\n{OutDir}\n\n" +
-                "下一步：\n" +
-                "① 打开 CharacterAnimSet，把槽位换成 Clips/ 目录下的新 .anim\n" +
-                "② 执行「BugParty2D ▸ 重建角色动画」\n\n" +
-                "或者直接执行「BugParty2D ▸ 自动填充动作表（用重绑定动画）」。", "好");
+            report = $"模型骨骼 {bonePaths.Count} 根，生成 {made} 个 .anim，" +
+                     $"跳过 {skipped} 个（无可映射曲线）；载入 {outMap.Count} 个";
+            foreach (var l in lines) Debug.Log("[Rebind]   " + l);
+            return outMap;
         }
 
         [MenuItem("BugParty2D/自动填充动作表（用重绑定动画）", false, 2063)]

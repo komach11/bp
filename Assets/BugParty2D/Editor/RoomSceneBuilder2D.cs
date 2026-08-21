@@ -1031,6 +1031,21 @@ namespace BugParty.TopDown2D.EditorTools
                 var elbow = NewChild(go, "ElbowOrigin");
                 elbow.transform.localPosition = new Vector3(0f, 0.8f, 0.1f);
 
+                // ★玩家的身体碰撞体。
+                //   CharacterController 只处理「自己撞环境」——
+                //   两个 CharacterController 之间是互相穿透的（Unity 的既有行为，
+                //   CC 不是刚体，不参与 CC-vs-CC 的解算）。结果四个人可以完全重叠
+                //   站在同一格上，抢柜子时看不出谁挤到了谁。
+                //   加一个 CapsuleCollider 后 CC 的 Move() 会把它当障碍物推开，
+                //   角色之间就有实体感了。
+                //   尺寸刻意比 CC 略小（半径 0.34 vs 0.38），避免两者边界打架
+                //   导致贴身时抖动。
+                var bodyCol = go.AddComponent<CapsuleCollider>();
+                bodyCol.height = 1.45f;
+                bodyCol.radius = 0.34f;
+                bodyCol.center = new Vector3(0f, 0.73f, 0f);
+                bodyCol.direction = 1;   // Y 轴
+
                 // 组件
                 go.AddComponent<PlayerInventory>();
                 go.AddComponent<SearchAbility>();
@@ -1058,6 +1073,11 @@ namespace BugParty.TopDown2D.EditorTools
                     fx.searchBobAmount *= 0.4f;
                     fx.searchSwayAngle *= 0.3f;
                 }
+
+                // ★脚步声发射器。按累计移动距离触发，不是按时间 ——
+                //   贴墙推、被击退滑行都不会误响。音效槽位在 RoomAudioVfx
+                //   的 sfxFootsteps（可放多个随机取），留空就完全不响。
+                go.AddComponent<FootstepEmitter>();
 
                 var actor = go.AddComponent<PlayerActor>();
                 actor.playerColor = colors[i];

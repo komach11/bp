@@ -66,12 +66,13 @@ namespace BugParty.TopDown2D.EditorTools
             if (!EditorUtility.DisplayDialog(
                 "接入 SCP 角色",
                 "将执行：\n" +
-                "① 把模型与动画 fbx 的 rig 统一改为 Humanoid（关键：绕过骨骼前缀不匹配）\n" +
-                "② 生成动作映射表 CharacterAnimSet（闲置/搜索/跑步/肘击 等槽位可在 Inspector 换）\n" +
-                "③ 生成 4 个材质 + 共用 AnimatorController\n" +
-                "④ 生成 4 个角色 Prefab，按脚部骨骼对齐到地面\n" +
-                "⑤ 写入 RoomArtConfig.characters[0..3]\n\n" +
-                "步骤 ① 会重新导入 8 个 fbx，可能需要一两分钟。\n" +
+                "① 把 8 个 fbx 的 rig 统一为 Generic 并重新导入\n" +
+                "② 重绑定动画曲线路径（剥掉 Rigify 的 ORG- 前缀，映射到模型骨架）\n" +
+                "③ 生成动作映射表 CharacterAnimSet（闲置/搜索/跑步/肘击 槽位可换）\n" +
+                "④ 生成 4 个材质 + 共用 AnimatorController\n" +
+                "⑤ 生成 4 个角色 Prefab，按蒙皮网格最低点对齐地面\n" +
+                "⑥ 写入 RoomArtConfig.characters[0..3]\n\n" +
+                "步骤 ①② 会重新导入并生成 .anim，需要一两分钟。\n" +
                 "完成后需重新执行 Build Room Scene。是否继续？",
                 "开始", "取消"))
                 return;
@@ -79,21 +80,27 @@ namespace BugParty.TopDown2D.EditorTools
             Directory.CreateDirectory(MatDir);
             AssetDatabase.Refresh();
 
-            // ① rig 统一为 Humanoid
+            // ① rig 统一为 Generic
             if (!PrepareRigs()) return;
 
-            // ② 动作映射表
-            var clips = CollectClips();
+            // ② ★重绑定动画路径 —— 这是 T-pose 的正解
+            //    实测 Humanoid 自动映射对 SCP 完全失败（humanDescription 里 0 条映射，
+            //    Avatar 是空壳），所以不再依赖它，直接改写曲线路径。
+            var rebound = SCPAnimRebind.RebindAll(out string rebindReport);
+            Debug.Log("[SCP] " + rebindReport);
+
+            // ③ 动作映射表：优先用重绑定后的 clip
+            var clips = rebound != null && rebound.Count > 0 ? rebound : CollectClips();
             var set = EnsureAnimSet(clips);
 
-            // ③ Controller
+            // ④ Controller
             var controller = BuildController(set);
 
-            // ④ 角色 Prefab
+            // ⑤ 角色 Prefab
             var prefabs = new GameObject[4];
             for (int i = 0; i < 4; i++) prefabs[i] = BuildCharacterPrefab(i, controller);
 
-            // ⑤ 写配置
+            // ⑥ 写配置
             WriteToConfig(prefabs);
 
             AssetDatabase.SaveAssets();
@@ -104,6 +111,7 @@ namespace BugParty.TopDown2D.EditorTools
 
             EditorUtility.DisplayDialog("完成",
                 $"已生成 {ok}/4 个角色 Prefab。\n" +
+                $"重绑定动画：{(rebound != null ? rebound.Count : 0)} 个\n" +
                 $"动作映射表已填 {set.FilledCount}/9 个槽位。\n\n" +
                 "下一步：BugParty2D ▸ Build Room Scene\n\n" +
                 "想换某个动作：打开 CharacterAnimSet 换 clip，\n" +
@@ -189,10 +197,23 @@ namespace BugParty.TopDown2D.EditorTools
 
                     bool dirty = false;
 
-                    if (imp.animationType != ModelImporterAnimationType.Human)
+                    // ★Generic，不是 Humanoid。
+                    //   实测 Humanoid 对 SCP 的自动映射完全失败：重新导入后
+                    //   humanDescription 里 human 映射 0 条、skeleton 0 条，
+                    //   生成的 Avatar 是空壳 —— Animator 拿到空 Avatar 只能播 root motion，
+                    //   角色停在导入姿态（T-pose）。原因是熊/猫是拟人角色，
+                    //   骨骼比例不符合人体，Unity 认不出标准人体槽位。
+                    //   改用 Generic + 曲线路径重绑定（SCPAnimRebind），完全可控。
+                    if (imp.animationType != ModelImporterAnimationType.Generic)
                     {
-                        imp.animationType = ModelImporterAnimationType.Human;
-                        // CreateFromThisModel = 让 Unity 用自动映射生成 Avatar
+                        imp.animationType = ModelImporterAnimationType.Generic;
+                        dirty = true;
+                    }
+
+                    // ★Generic 必须有 Avatar 才能播动画。CreateFromThisModel 在 Generic 下
+                    //   只是记录骨架层级，不做人体语义映射，一定成功
+                    if (imp.avatarSetup != ModelImporterAvatarSetup.CreateFromThisModel)
+                    {
                         imp.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
                         dirty = true;
                     }
@@ -206,7 +227,7 @@ namespace BugParty.TopDown2D.EditorTools
                     }
 
                     // ★关掉 optimizeGameObjects：开启后骨骼节点会被折叠进 Avatar，
-                    //   我们需要遍历 foot/heel 骨骼来做落地对齐
+                    //   重绑定需要遍历真实 transform 层级来建路径表
                     if (imp.optimizeGameObjects)
                     {
                         imp.optimizeGameObjects = false;
@@ -227,26 +248,14 @@ namespace BugParty.TopDown2D.EditorTools
                 AssetDatabase.Refresh();
             }
 
-            Debug.Log($"[SCP] rig 已统一为 Humanoid（{changed}/{paths.Count} 个 fbx 被重新导入）");
+            Debug.Log($"[SCP] rig 已统一为 Generic（{changed}/{paths.Count} 个 fbx 被重新导入）");
 
-            // 校验：模型的 Avatar 是否真的生成了
+            // 校验：模型的 Avatar 是否生成（Generic 下应当总是成功）
             foreach (var (model, _, _) in Roster)
             {
                 string p = ModelDir + "/" + model;
-                var av = FindAvatar(p);
-                if (av == null)
-                {
-                    EditorUtility.DisplayDialog("Avatar 生成失败",
-                        $"{model} 没能生成 Humanoid Avatar。\n\n" +
-                        "说明 Unity 的自动骨骼映射没认出这套骨架。\n" +
-                        "需要手工配置：选中 fbx ▸ Rig ▸ Configure，\n" +
-                        "把 Hips/Spine/Chest/Head 与四肢逐个指到对应骨骼。", "好");
-                    return false;
-                }
-                if (!av.isValid)
-                {
-                    Debug.LogWarning($"[SCP] {model} 的 Avatar 存在但 isValid=false，动画可能仍不正常");
-                }
+                if (FindAvatar(p) == null)
+                    Debug.LogWarning($"[SCP] {model} 没有生成 Avatar，动画可能不正常");
             }
             return true;
         }
@@ -578,9 +587,9 @@ namespace BugParty.TopDown2D.EditorTools
             if (anim == null) anim = inst.AddComponent<Animator>();
             anim.runtimeAnimatorController = controller;
 
-            // ★Avatar 必须显式指定。Humanoid rig 的动画靠 Avatar 做骨骼语义映射，
-            //   avatar 为空时 Animator 会退化成「只播 root motion」→ 角色停在 T-pose。
-            //   这正是上一版 T-pose 的直接原因（m_Avatar: {fileID: 0}）。
+            // ★Avatar 必须显式指定。Generic rig 的 Animator 没有 Avatar 时
+            //   只能播 root motion，骨骼曲线全部被忽略 → 角色停在 T-pose。
+            //   这是上一版 T-pose 的直接原因之一（m_Avatar: {fileID: 0}）。
             var avatar = FindAvatar(modelPath);
             if (avatar != null) anim.avatar = avatar;
             else Debug.LogError($"[SCP] {modelName} 没有 Avatar，动画将无法播放");
@@ -591,7 +600,7 @@ namespace BugParty.TopDown2D.EditorTools
             //   而我们的落地判断依赖骨骼位置。AlwaysAnimate 对 4 个角色没有性能压力
             anim.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 
-            // ── ★按脚部骨骼把模型对齐到 y=0（修悬空）──
+            // ── ★按网格最低点把模型对齐到 y=0（修悬空）──
             AlignFeetToOrigin(inst);
 
             string prefabPath = OutDir + "/Char_" + label + ".prefab";
@@ -629,71 +638,137 @@ namespace BugParty.TopDown2D.EditorTools
         }
 
         /// <summary>
-        /// 把模型整体平移，让「脚底」落在 y=0。
+        /// 把模型整体平移，让「网格最低点」落在 y=0。
         ///
-        /// ★为什么不用渲染包围盒：
-        /// SkinnedMeshRenderer.bounds 是 T-pose 下预计算的静态 AABB，
-        /// 实测 Bear 的 min.y = -0.680，而脚骨（foot.L/R）其实在 +0.847。
-        /// 用包围盒对齐会把模型抬高 0.68，叠加缩放后就是那 0.725 米悬空。
+        /// ★为什么不用 Renderer.bounds：
+        /// SkinnedMeshRenderer.bounds 是导入时预计算的静态 AABB，SCP 的模型
+        /// 根节点带 scale=100 的补偿，实测 bounds.min.y = -0.0074（几乎是 0），
+        /// 完全反映不了真实网格范围 —— 用它对齐必然错。
         ///
-        /// 脚部骨骼是真实的接地参考点：优先 toe（脚尖，最低）→ heel → foot。
-        /// 找不到任何脚骨时才退回包围盒，并打警告。
+        /// ★为什么不用脚骨位置：
+        /// Rigify 骨架的 foot/toe/heel 带旋转，骨骼 pivot 未必在脚底表面，
+        /// 而且实测 toe(1.0153) 竟然比 foot(0.8398) 高 —— 骨骼链方向不是竖直的。
+        ///
+        /// 唯一可靠的是蒙皮网格顶点本身：用 BakeMesh 取 T-pose 下的实际顶点，
+        /// 变换到 root 局部空间求最低 y。这就是真正的脚底。
         /// </summary>
         static void AlignFeetToOrigin(GameObject root)
         {
-            float? lowest = null;
-            string usedBone = null;
+            float lowest = float.MaxValue;
+            float highest = float.MinValue;
+            int sampled = 0;
 
-            // 名字里含这些关键词的骨骼视为脚部，按优先级排列
-            string[] footKeys = { "toe", "heel", "foot", "ankle" };
-
-            foreach (var key in footKeys)
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
-                foreach (var t in root.GetComponentsInChildren<Transform>(true))
-                {
-                    string n = t.name.ToLowerInvariant();
-                    if (!n.Contains(key)) continue;
-                    // _end 是骨骼末端辅助节点，位置可能超出实际网格，跳过
-                    if (n.EndsWith("_end")) continue;
+                if (smr.sharedMesh == null) continue;
 
-                    float y = root.transform.InverseTransformPoint(t.position).y;
-                    if (lowest == null || y < lowest.Value)
+                var baked = new Mesh();
+                try
+                {
+                    // BakeMesh 输出当前姿态下的顶点，坐标在 smr 自身空间
+                    smr.BakeMesh(baked, true);
+                    var verts = baked.vertices;
+                    for (int i = 0; i < verts.Length; i++)
                     {
-                        lowest = y;
-                        usedBone = t.name;
+                        var wp = smr.transform.TransformPoint(verts[i]);
+                        float y = root.transform.InverseTransformPoint(wp).y;
+                        if (y < lowest) lowest = y;
+                        if (y > highest) highest = y;
+                        sampled++;
                     }
                 }
-                if (lowest != null) break;   // 找到优先级最高的一类就够
+                finally
+                {
+                    Object.DestroyImmediate(baked);
+                }
             }
 
-            if (lowest == null)
+            // 没有蒙皮网格就退回普通 MeshRenderer 的顶点
+            if (sampled == 0)
             {
-                Debug.LogWarning($"[SCP] {root.name} 找不到脚部骨骼，退回包围盒对齐（可能悬空）");
-                var rends = root.GetComponentsInChildren<Renderer>(true);
-                if (rends.Length == 0) return;
-                var b = rends[0].bounds;
-                for (int i = 1; i < rends.Length; i++) b.Encapsulate(rends[i].bounds);
-                lowest = root.transform.InverseTransformPoint(new Vector3(0f, b.min.y, 0f)).y;
-                usedBone = "(bounds)";
+                foreach (var mf in root.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    if (mf.sharedMesh == null) continue;
+                    var verts = mf.sharedMesh.vertices;
+                    for (int i = 0; i < verts.Length; i++)
+                    {
+                        var wp = mf.transform.TransformPoint(verts[i]);
+                        float y = root.transform.InverseTransformPoint(wp).y;
+                        if (y < lowest) lowest = y;
+                        if (y > highest) highest = y;
+                        sampled++;
+                    }
+                }
             }
 
-            // 把所有子物体整体上移，使 lowest 落到 0。
-            // ★不动 root 自己的 localPosition —— 那个值由 ArtResolver 在建场时设置，
-            //   在这里改会被覆盖。所以改的是子层（模型骨架根）。
-            float shift = -lowest.Value;
-            if (Mathf.Abs(shift) < 1e-5f)
+            if (sampled == 0)
             {
-                Debug.Log($"[SCP] {root.name} 脚部已在 y=0（参考骨骼 {usedBone}），无需调整");
+                Debug.LogWarning($"[SCP] {root.name} 找不到任何网格，无法对齐地面");
                 return;
             }
 
-            for (int i = 0; i < root.transform.childCount; i++)
+            // 记录实际身高，供 ComputeScale 用（写进临时组件读不到，改为返回值太侵入，
+            // 所以 ComputeScale 也用同一套 BakeMesh 逻辑）
+            float shift = -lowest;
+            if (Mathf.Abs(shift) > 1e-5f)
             {
-                var c = root.transform.GetChild(i);
-                c.localPosition += new Vector3(0f, shift, 0f);
+                for (int i = 0; i < root.transform.childCount; i++)
+                {
+                    var c = root.transform.GetChild(i);
+                    c.localPosition += new Vector3(0f, shift, 0f);
+                }
             }
 
-            Debug.Log($"[SCP] {root.name} 按骨骼 {usedBone} 对齐地面，上移 {shift:F4}");
+            Debug.Log($"[SCP] {root.name} 网格 y 范围 [{lowest:F4}, {highest:F4}]" +
+                      $"（{sampled} 顶点）→ 上移 {shift:F4}，高度 {highest - lowest:F4}");
+        }
+
+        /// <summary>
+        /// 取模型在自身局部空间的实际网格高度（BakeMesh 顶点范围）。
+        /// AlignFeetToOrigin 与 ComputeScale 共用，避免两处算法不一致。
+        /// </summary>
+        static bool TryMeshExtentY(GameObject root, out float minY, out float maxY)
+        {
+            minY = float.MaxValue; maxY = float.MinValue;
+            int n = 0;
+
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (smr.sharedMesh == null) continue;
+                var baked = new Mesh();
+                try
+                {
+                    smr.BakeMesh(baked, true);
+                    var verts = baked.vertices;
+                    for (int i = 0; i < verts.Length; i++)
+                    {
+                        var wp = smr.transform.TransformPoint(verts[i]);
+                        float y = root.transform.InverseTransformPoint(wp).y;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                        n++;
+                    }
+                }
+                finally { Object.DestroyImmediate(baked); }
+            }
+
+            if (n == 0)
+            {
+                foreach (var mf in root.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    if (mf.sharedMesh == null) continue;
+                    var verts = mf.sharedMesh.vertices;
+                    for (int i = 0; i < verts.Length; i++)
+                    {
+                        var wp = mf.transform.TransformPoint(verts[i]);
+                        float y = root.transform.InverseTransformPoint(wp).y;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                        n++;
+                    }
+                }
+            }
+            return n > 0;
         }
 
         // ══════════════════════════════════════════════
@@ -741,32 +816,46 @@ namespace BugParty.TopDown2D.EditorTools
         }
 
         /// <summary>
-        /// 按「脚底到头顶」的骨骼距离算缩放，使角色高度等于 characterHeight。
-        /// 不用包围盒 —— T-pose 下手臂横伸会让 AABB 的 y 范围失真。
+        /// 按实际网格高度算缩放，使角色高度等于 characterHeight。
+        ///
+        /// ★用 BakeMesh 顶点，不用骨骼位置也不用 Renderer.bounds：
+        /// - 骨骼：head_end 在骨骼链末端，位置可能远超网格顶部（实测 1.916 而
+        ///   head 只有 1.117），拿它当身高会把角色缩得过小
+        /// - Renderer.bounds：SCP 根节点带 scale=100 补偿，静态 AABB 完全失真
+        ///
+        /// 这个方法必须在 AlignFeetToOrigin 之后调用（此时脚底已在 y=0）。
         /// </summary>
         static float ComputeScale(GameObject prefab, float targetHeight)
         {
             if (prefab == null || targetHeight <= 0.01f) return 1f;
 
-            float? top = null;
-            foreach (var t in prefab.GetComponentsInChildren<Transform>(true))
+            // Prefab 资产不能直接 BakeMesh（需要实例），临时实例化一份
+            var inst = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            if (inst == null) return 1f;
+
+            float h;
+            try
             {
-                string n = t.name.ToLowerInvariant();
-                // head_end 是头顶末端节点，正是我们要的「头顶」
-                if (n != "head_end" && n != "head") continue;
-                float y = prefab.transform.InverseTransformPoint(t.position).y;
-                if (top == null || y > top.Value) top = y;
+                if (!TryMeshExtentY(inst, out float minY, out float maxY))
+                {
+                    Debug.LogWarning($"[SCP] {prefab.name} 取不到网格范围，缩放取 1");
+                    return 1f;
+                }
+                h = maxY - minY;
+            }
+            finally
+            {
+                Object.DestroyImmediate(inst);
             }
 
-            if (top == null || top.Value < 0.01f)
+            if (h < 0.01f)
             {
-                Debug.LogWarning($"[SCP] {prefab.name} 找不到头部骨骼，缩放取 1");
+                Debug.LogWarning($"[SCP] {prefab.name} 网格高度异常（{h:F4}），缩放取 1");
                 return 1f;
             }
 
-            // AlignFeetToOrigin 已保证脚底在 y=0，所以 top 就是身高
-            float scale = targetHeight / top.Value;
-            Debug.Log($"[SCP] {prefab.name} 骨骼身高 {top.Value:F4} → 缩放 {scale:F4}（目标 {targetHeight}）");
+            float scale = targetHeight / h;
+            Debug.Log($"[SCP] {prefab.name} 网格身高 {h:F4} → 缩放 {scale:F4}（目标 {targetHeight}）");
             return scale;
         }
     }

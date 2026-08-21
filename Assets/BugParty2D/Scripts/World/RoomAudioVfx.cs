@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace BugParty.TopDown2D
@@ -22,22 +23,48 @@ namespace BugParty.TopDown2D
         [Tooltip("留空会自动创建一个 AudioSource")]
         public AudioSource sfxSource;
 
-        [Space(4)]
+        // ── 肘击 ──────────────────────────────────────
+        [Header("── 肘击 ──")]
+        [Tooltip("肘击起手的蓄力音。比 sfxElbowSwing 早 elbowWindup（默认 0.12 秒）")]
+        public AudioClip sfxElbowWindup;
+        [Tooltip("★挥肘的破风音。不论是否命中都播，命中时再叠 sfxElbowHit。\n" +
+                 "没有它挥空毫无声音反馈，玩家会以为技能没触发")]
+        public AudioClip sfxElbowSwing;
+        [Tooltip("命中的撞击音。与 sfxElbowSwing 叠加播放")]
+        public AudioClip sfxElbowHit;
+        [Tooltip("把对方手里的道具打掉时播")]
+        public AudioClip sfxItemKnockedOut;
+
+        // ── 搜索 ──────────────────────────────────────
+        [Header("── 搜索 ──")]
+        [Tooltip("开始翻找容器")]
         public AudioClip sfxSearchStart;
+        [Tooltip("★搜索期间的循环翻找音。搜索开始播、结束/打断时停。\n" +
+                 "留空则不播。它是「正在搜」最直接的听觉反馈")]
+        public AudioClip sfxSearchLoop;
+        [Tooltip("被打断（挨了肘击 / 松手 / 踩空）")]
         public AudioClip sfxSearchInterrupt;
         [Tooltip("★搜索完成（读条走满）。即使容器已空也会播 —— 玩家需要知道\n" +
                  "「搜完了」，否则不清楚该不该继续按着不动")]
         public AudioClip sfxSearchComplete;
+        [Tooltip("拿到道具")]
         public AudioClip sfxItemCollected;
         [Tooltip("搜到稀有道具时优先播这个")]
         public AudioClip sfxItemRare;
-        public AudioClip sfxElbowHit;
-        [Tooltip("★挥肘的破风音。不论是否命中都播，命中时再叠 sfxElbowHit。\n" +
-                 "没有它挥空毫无声音反馈，玩家会以为技能没触发")]
-        public AudioClip sfxElbowSwing;
-        [Tooltip("肘击起手的蓄力音。比 sfxElbowSwing 早 elbowWindup（默认 0.12 秒）")]
-        public AudioClip sfxElbowWindup;
-        public AudioClip sfxItemKnockedOut;
+
+        // ── 脚步与跳跃 ─────────────────────────────────
+        [Header("── 脚步与跳跃 ──")]
+        [Tooltip("★脚步声。可放多个，每步随机取一个避免机械重复。\n" +
+                 "由 FootstepEmitter 按移动距离触发，不是按时间 —— 走快走慢的\n" +
+                 "步频会自然不同")]
+        public AudioClip[] sfxFootsteps;
+        [Tooltip("在会议桌/矮柜等平台上走的脚步。留空则统一用 sfxFootsteps")]
+        public AudioClip[] sfxFootstepsPlatform;
+        [Range(0f, 1f)] public float footstepVolume = 0.45f;
+        [Tooltip("脚步音调随机范围，避免连续踩踏像复读机")]
+        [Range(0f, 0.4f)] public float footstepPitchJitter = 0.12f;
+
+        [Space(4)]
         public AudioClip sfxJump;
         public AudioClip sfxLand;
         [Tooltip("从高处落下才播，阈值见 heavyLandHeight")]
@@ -118,8 +145,16 @@ namespace BugParty.TopDown2D
         float _searchTotal = 1f;
         float _searchRemain = 1f;
 
+        /// <summary>
+        /// 场景唯一实例。FootstepEmitter 等每帧调用方需要拿到它，
+        /// 用 FindObjectOfType 每帧找开销太大。
+        /// </summary>
+        public static RoomAudioVfx Instance { get; private set; }
+
         void Awake()
         {
+            Instance = this;
+
             if (sfxSource == null)
             {
                 sfxSource = gameObject.AddComponent<AudioSource>();
@@ -159,6 +194,13 @@ namespace BugParty.TopDown2D
             RoomEvents.OnFinalCollapseStarted += OnFinalCollapse;
             RoomEvents.OnTimerTick += OnTimerTick;
             RoomEvents.OnPhaseChanged += OnPhaseChanged;
+        }
+
+        void OnDestroy()
+        {
+            // 场景切换后 Instance 若不清空会是野指针，
+            // FootstepEmitter 拿到已销毁对象会抛 MissingReferenceException
+            if (Instance == this) Instance = null;
         }
 
         void OnDisable()
@@ -218,16 +260,72 @@ namespace BugParty.TopDown2D
         void OnSearchStarted(PlayerActor p, SearchContainer c)
         {
             Play(sfxSearchStart, p != null ? p.transform.position : Vector3.zero);
+            StartSearchLoop(p);
         }
 
         void OnSearchInterrupted(PlayerActor p, SearchContainer c)
         {
             Play(sfxSearchInterrupt, p != null ? p.transform.position : Vector3.zero);
+            StopSearchLoop(p);
         }
 
         void OnSearchCompleted(PlayerActor p, SearchContainer c)
         {
             Play(sfxSearchComplete, p != null ? p.transform.position : Vector3.zero);
+            StopSearchLoop(p);
+        }
+
+        // ── 搜索循环音 ─────────────────────────────────
+        // ★为什么要按玩家分别管理：4 个人可能同时在搜不同的柜子，
+        //   共用一个 AudioSource 的话后开始的会掐断先开始的。
+        //   每人一个 AudioSource 挂在自己身上，还能顺带获得 3D 空间感。
+        readonly Dictionary<PlayerActor, AudioSource> _searchLoops =
+            new Dictionary<PlayerActor, AudioSource>();
+
+        void StartSearchLoop(PlayerActor p)
+        {
+            if (sfxSearchLoop == null || p == null) return;
+
+            if (!_searchLoops.TryGetValue(p, out var src) || src == null)
+            {
+                src = p.gameObject.AddComponent<AudioSource>();
+                src.playOnAwake = false;
+                src.loop = true;
+                src.spatialBlend = 0f;   // 2D 俯视，用 2D 音更清晰
+                _searchLoops[p] = src;
+            }
+            src.clip = sfxSearchLoop;
+            src.volume = sfxVolume * 0.7f;
+            if (!src.isPlaying) src.Play();
+        }
+
+        void StopSearchLoop(PlayerActor p)
+        {
+            if (p == null) return;
+            if (_searchLoops.TryGetValue(p, out var src) && src != null && src.isPlaying)
+                src.Stop();
+        }
+
+        // ── 脚步声 ─────────────────────────────────────
+
+        /// <summary>
+        /// 播一步脚步声。由 FootstepEmitter 按累计移动距离调用 ——
+        /// 不是按固定时间间隔，所以走快走慢的步频会自然不同。
+        /// </summary>
+        /// <param name="onPlatform">是否站在平台（会议桌/矮柜）上，用另一组音效</param>
+        public void PlayFootstep(Vector3 at, bool onPlatform = false)
+        {
+            var bank = onPlatform && sfxFootstepsPlatform != null && sfxFootstepsPlatform.Length > 0
+                ? sfxFootstepsPlatform
+                : sfxFootsteps;
+
+            if (bank == null || bank.Length == 0 || sfxSource == null) return;
+
+            var clip = bank[Random.Range(0, bank.Length)];
+            if (clip == null) return;
+
+            sfxSource.pitch = 1f + Random.Range(-footstepPitchJitter, footstepPitchJitter);
+            sfxSource.PlayOneShot(clip, sfxVolume * footstepVolume);
         }
 
         void OnElbowSwing(PlayerActor p)
