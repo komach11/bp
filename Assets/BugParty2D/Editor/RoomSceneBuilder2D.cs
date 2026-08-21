@@ -70,6 +70,12 @@ namespace BugParty.TopDown2D.EditorTools
             var old = GameObject.Find("=== Room2D ===");
             if (old != null) Object.DestroyImmediate(old);
 
+            // ★检查场景里有没有与密室无关的物件。
+            //   密室相机是 70° 俯角、正交投影，任何位于房间范围内的外来物体都会
+            //   直接挡住镜头 —— 曾经在同事的特效测试场里建场，结果满屏是地形和粒子，
+            //   看起来像"相机坏了"，实际是别人的内容压在上面。
+            if (!WarnIfSceneNotEmpty()) return;
+
             var root = new GameObject("=== Room2D ===");
             Undo.RegisterCreatedObjectUndo(root, "Build Room2D");
 
@@ -113,6 +119,47 @@ namespace BugParty.TopDown2D.EditorTools
             var cfg = EnsureConfigAssets();
             Selection.activeObject = cfg;
             EditorGUIUtility.PingObject(cfg);
+        }
+
+        /// <summary>
+        /// 建场前检查场景是否"干净"。
+        ///
+        /// 密室相机是正交投影 + 70° 俯角，视野固定罩住整个房间。任何落在房间
+        /// 范围内的外来物体都会挡住镜头 —— 在别人的测试场里建场时，画面会变成
+        /// 一堆看不懂的色块，很容易误判成相机或管线出了问题。
+        ///
+        /// 返回 false 表示用户选择了取消。
+        /// </summary>
+        static bool WarnIfSceneNotEmpty()
+        {
+            var roots = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+
+            // 密室自己会创建这些，不算外来物
+            var foreign = new List<string>();
+            for (int i = 0; i < roots.Length; i++)
+            {
+                var n = roots[i].name;
+                if (n.StartsWith("=== Room2D ===")) continue;
+                if (n.StartsWith("FloatingBar_")) continue;   // 上一次建场留下的读条
+                foreign.Add(n);
+            }
+
+            if (foreign.Count == 0) return true;
+
+            // 只列前 8 个，避免对话框过长
+            int show = Mathf.Min(8, foreign.Count);
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < show; i++) sb.Append("　· ").Append(foreign[i]).Append('\n');
+            if (foreign.Count > show) sb.Append($"　… 另有 {foreign.Count - show} 个\n");
+
+            return EditorUtility.DisplayDialog(
+                "当前场景不是空场景",
+                $"检测到 {foreign.Count} 个与密室无关的根对象：\n\n" + sb +
+                "\n密室相机是正交俯视，视野固定罩住整个房间 —— " +
+                "这些物件只要位于房间范围内就会挡住镜头，画面会变成一堆色块。\n\n" +
+                "建议：File ▸ New Scene 新建空场景后再执行本工具。\n\n" +
+                "仍要在当前场景生成吗？",
+                "仍然生成", "取消");
         }
 
         /// <summary>
