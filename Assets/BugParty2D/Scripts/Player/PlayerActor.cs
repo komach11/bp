@@ -50,6 +50,19 @@ namespace BugParty.TopDown2D
 
         // ── 垂直（跳跃/坠落）─────────────────────────
         float _vertical;
+
+        [Header("★贴地")]
+        [Tooltip("落地状态下持续施加的向下速度。\n" +
+                 "CharacterController 需要每帧有一点向下的分量才会稳定贴住地面 ——\n" +
+                 "置 0 会导致地板塌陷或走出平台边缘时「站在空气里」。\n" +
+                 "2 米/秒足够，不累积所以不会越掉越快。")]
+        [Min(0f)] public float stickToGroundForce = 2f;
+
+        [Tooltip("★兜底重力。如果角色离地高度超过这个值却仍被判定为 Grounded，\n" +
+                 "说明地面检测出了问题 —— 强制切回下落状态。\n" +
+                 "这是防「整场飘着走」的最后一道保险。")]
+        [Min(0.1f)] public float maxGroundedHeight = 0.9f;
+
         VerticalState _vState = VerticalState.Grounded;
         float _lastGroundedTime = -99f;
         float _jumpPressedTime = -99f;
@@ -170,8 +183,11 @@ namespace BugParty.TopDown2D
             var hits = Physics.SphereCastAll(origin, radius, Vector3.down, probeLen);
             for (int i = 0; i < hits.Length; i++)
             {
-                // 忽略自己、掉落物、以及触发器
-                if (hits[i].collider.GetComponentInParent<PlayerActor>() == this) continue;
+                // ★忽略全部玩家的碰撞体，而不只是自己的。
+                //   本轮给玩家加了 CapsuleCollider（防互相穿透），若不排除，
+                //   站在别人旁边时 SphereCast 会打到对方的胶囊体并当成「地面」——
+                //   结果是踩在别人头上判定落地，两个人一起飘起来。
+                if (hits[i].collider.GetComponentInParent<PlayerActor>() != null) continue;
                 if (hits[i].collider.GetComponentInParent<WorldItem>() != null) continue;
                 if (hits[i].collider.isTrigger) continue;
 
@@ -215,6 +231,20 @@ namespace BugParty.TopDown2D
             {
                 // 脚下没东西了（走到洞边缘或桌子边缘）→ 开始下落
                 _vState = VerticalState.Falling;
+            }
+
+            // ★兜底：被判定为 Grounded 但实际离地过高 → 强制下落。
+            //   这是防「整场飘着走」的最后一道保险。可能的诱因：
+            //     · 角色模型的 pivot 有偏移，视觉上飘着
+            //     · SphereCast 打到了不该算地面的碰撞体（比如别人的身体碰撞体）
+            //     · 出生点 y 设得比地面高（建场是 1.2，地面 0）而首帧就被判落地
+            //   注意要排除 Pitfall —— 那是剧情性下坠，本来就悬空
+            if (_vState == VerticalState.Grounded &&
+                HeightAboveGround > maxGroundedHeight &&
+                HeightAboveGround < 50f)
+            {
+                _vState = VerticalState.Falling;
+                _vertical = 0f;
             }
         }
 
@@ -298,6 +328,18 @@ namespace BugParty.TopDown2D
                 _vertical -= _cfg.gravity * Time.deltaTime;
                 if (_vertical < 0f && _vState == VerticalState.Rising)
                     _vState = VerticalState.Falling;
+            }
+            else
+            {
+                // ★贴地压力。落地时不能把 _vertical 置成 0 就不管了 ——
+                //   CharacterController 需要每帧有一点向下的速度才会持续贴住地面，
+                //   否则遇到以下情况会「站在空气里」：
+                //     · 脚下的地板塌陷后 SphereCast 还没更新到那一帧
+                //     · 从平台边缘走出去的瞬间
+                //     · 角色模型有偏移导致视觉上就是飘着的
+                //   一个恒定小速度足够（不累积，所以不会越掉越快），
+                //   同时保证 Controller.isGrounded 稳定为 true。
+                _vertical = -stickToGroundForce;
             }
 
             _highestY = Mathf.Max(_highestY, transform.position.y);

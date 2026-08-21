@@ -975,6 +975,11 @@ namespace BugParty.TopDown2D.EditorTools
                     {
                         var bridge = go.AddComponent<PlayerAnimatorBridge>();
                         bridge.animator = anim;
+
+                        // ★把动作表也填上 —— 这样选中玩家就能直接点开换动作，
+                        //   不用去 Project 窗口里翻找资产
+                        bridge.animSet = AssetDatabase.LoadAssetAtPath<CharacterAnimSet>(
+                            "Assets/BugParty2D/Art/Characters/CharacterAnimSet.asset");
                     }
                 }
                 else

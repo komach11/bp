@@ -89,9 +89,16 @@ namespace BugParty.TopDown2D.EditorTools
             var rebound = SCPAnimRebind.RebindAll(out string rebindReport);
             Debug.Log("[SCP] " + rebindReport);
 
-            // ③ 动作映射表：优先用重绑定后的 clip
-            var clips = rebound != null && rebound.Count > 0 ? rebound : CollectClips();
-            var set = EnsureAnimSet(clips);
+            // ③ 动作映射表：★必须用重绑定后的 clip，且强制覆盖旧槽位
+            //    fbx 原始 clip 的曲线路径是 PolyAnim/root/ORG-hips/…，
+            //    与模型骨架完全对不上，播了也不动骨骼
+            bool haveRebound = rebound != null && rebound.Count > 0;
+            var clips = haveRebound ? rebound : CollectClips();
+            var set = EnsureAnimSet(clips, force: haveRebound);
+
+            if (!haveRebound)
+                Debug.LogError("[SCP] 重绑定失败，退回 fbx 原始 clip —— 角色会保持 T-pose。" +
+                               "请检查上面的 [Rebind] 报告。");
 
             // ④ Controller
             var controller = BuildController(set);
@@ -308,9 +315,14 @@ namespace BugParty.TopDown2D.EditorTools
         }
 
         /// <summary>
-        /// 创建或更新动作映射表。已存在的槽位不覆盖 —— 用户手改过的 clip 要保留。
+        /// 创建或更新动作映射表。
+        ///
+        /// ★force = true 时强制覆盖全部槽位。
+        /// 完整流程必须强制覆盖 —— 否则上一轮填进去的 fbx 原始 clip
+        /// （ORG- 骨骼路径，播不动模型）会因为「槽位非空」而被保留，
+        /// 重绑定生成的 .anim 永远用不上。这正是重绑定做完了却仍然 T-pose 的原因。
         /// </summary>
-        static CharacterAnimSet EnsureAnimSet(Dictionary<string, AnimationClip> m)
+        static CharacterAnimSet EnsureAnimSet(Dictionary<string, AnimationClip> m, bool force = false)
         {
             var set = AssetDatabase.LoadAssetAtPath<CharacterAnimSet>(AnimSetPath);
             bool created = false;
@@ -321,20 +333,21 @@ namespace BugParty.TopDown2D.EditorTools
                 created = true;
             }
 
-            // 只填空槽位，不动用户手改过的
-            if (set.idle == null) set.idle = Pick(m, "Idle_A", "Idle_B", "Idle_C", "Idle_D");
-            if (set.walk == null) set.walk = Pick(m, "Walk_Forward", "Walk_Forward_Slow");
-            if (set.run == null) set.run = Pick(m, "Run_Forward", "Run_Forward_Fast");
+            // force 时全部重填；否则只填空槽位，保留用户手改过的
+            if (force || set.idle == null) set.idle = Pick(m, "Idle_A", "Idle_B", "Idle_C", "Idle_D");
+            if (force || set.walk == null) set.walk = Pick(m, "Walk_Forward", "Walk_Forward_Slow");
+            if (force || set.run == null) set.run = Pick(m, "Run_Forward", "Run_Forward_Fast");
             // SCP 没有翻箱动作，Fight_Idle 是半蹲戒备姿态，最接近「专注地在做什么」
-            if (set.search == null) set.search = Pick(m, "Fight_Idle", "Idle_B", "Idle_A");
-            if (set.elbow == null) set.elbow = Pick(m, "Fight_Punch_Right", "Fight_Punch_Left", "Fight_Punch_A");
-            if (set.jump == null) set.jump = Pick(m, "Jump_A", "Jump_B", "Run_Jump");
-            if (set.fall == null) set.fall = Pick(m, "Falling", "Jump_B");
-            if (set.getHit == null) set.getHit = Pick(m, "Fight_Hit_A", "Fight_Hit_B", "Fight_Hit_C");
-            if (set.stagger == null) set.stagger = Pick(m, "Fight_Hit_B", "Fight_Hit_C", "Fight_Hit_A");
+            if (force || set.search == null) set.search = Pick(m, "Fight_Idle", "Idle_B", "Idle_A");
+            if (force || set.elbow == null) set.elbow = Pick(m, "Fight_Punch_Right", "Fight_Punch_Left", "Fight_Punch_A");
+            if (force || set.jump == null) set.jump = Pick(m, "Jump_A", "Jump_B", "Run_Jump");
+            if (force || set.fall == null) set.fall = Pick(m, "Falling", "Jump_B");
+            if (force || set.getHit == null) set.getHit = Pick(m, "Fight_Hit_A", "Fight_Hit_B", "Fight_Hit_C");
+            if (force || set.stagger == null) set.stagger = Pick(m, "Fight_Hit_B", "Fight_Hit_C", "Fight_Hit_A");
 
             EditorUtility.SetDirty(set);
-            Debug.Log($"[SCP] 动作映射表{(created ? "已创建" : "已更新")}：{AnimSetPath}（{set.FilledCount}/9 槽位）");
+            Debug.Log($"[SCP] 动作映射表{(created ? "已创建" : (force ? "已强制重填" : "已更新"))}：" +
+                      $"{AnimSetPath}（{set.FilledCount}/9 槽位）");
             return set;
         }
 
@@ -638,79 +651,75 @@ namespace BugParty.TopDown2D.EditorTools
         }
 
         /// <summary>
-        /// 把模型整体平移，让「网格最低点」落在 y=0。
+        /// 取模型在 root 局部空间的真实网格 y 范围。
+        ///
+        /// ★为什么不用 BakeMesh：
+        /// 实测在 Prefab 编辑态下 BakeMesh 输出的顶点没有正确反映骨骼层级的
+        /// scale。SCP 模型的 Bear 节点带 scale=100 的单位补偿，BakeMesh 算出的
+        /// 最低点是 -0.0016（mesh 局部值），而真实值应是 -0.0016 + (-0.00736 × 100)
+        /// = -0.7376。上一版据此只把模型上移了 0.0016，等于没对齐 —— 那正是仍然
+        /// 悬空的原因。
         ///
         /// ★为什么不用 Renderer.bounds：
-        /// SkinnedMeshRenderer.bounds 是导入时预计算的静态 AABB，SCP 的模型
-        /// 根节点带 scale=100 的补偿，实测 bounds.min.y = -0.0074（几乎是 0），
-        /// 完全反映不了真实网格范围 —— 用它对齐必然错。
+        /// 那是世界空间 AABB，且 SkinnedMeshRenderer 的值是导入时预计算的静态值，
+        /// 不随实例的 transform 更新。
         ///
-        /// ★为什么不用脚骨位置：
-        /// Rigify 骨架的 foot/toe/heel 带旋转，骨骼 pivot 未必在脚底表面，
-        /// 而且实测 toe(1.0153) 竟然比 foot(0.8398) 高 —— 骨骼链方向不是竖直的。
-        ///
-        /// 唯一可靠的是蒙皮网格顶点本身：用 BakeMesh 取 T-pose 下的实际顶点，
-        /// 变换到 root 局部空间求最低 y。这就是真正的脚底。
+        /// 正解：直接取 sharedMesh.bounds 的 8 个角点，用
+        /// root.worldToLocalMatrix × renderer.localToWorldMatrix 变换到 root 空间。
+        /// 这样 scale/rotation 全部被正确考虑，且不依赖运行时状态。
+        /// </summary>
+        static bool TryMeshExtentY(GameObject root, out float minY, out float maxY)
+        {
+            minY = float.MaxValue; maxY = float.MinValue;
+            bool any = false;
+
+            var toLocal = root.transform.worldToLocalMatrix;
+
+            foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+            {
+                Mesh mesh = null;
+                if (r is SkinnedMeshRenderer smr) mesh = smr.sharedMesh;
+                else
+                {
+                    var mf = r.GetComponent<MeshFilter>();
+                    if (mf != null) mesh = mf.sharedMesh;
+                }
+                if (mesh == null) continue;
+
+                var b = mesh.bounds;
+                var m = toLocal * r.transform.localToWorldMatrix;
+
+                // 取 AABB 的 8 个角点分别变换 —— 只变换 center 会漏掉旋转后的极值
+                for (int i = 0; i < 8; i++)
+                {
+                    var corner = new Vector3(
+                        (i & 1) == 0 ? b.min.x : b.max.x,
+                        (i & 2) == 0 ? b.min.y : b.max.y,
+                        (i & 4) == 0 ? b.min.z : b.max.z);
+
+                    float y = m.MultiplyPoint3x4(corner).y;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                    any = true;
+                }
+            }
+            return any;
+        }
+
+        /// <summary>
+        /// 把模型整体平移，让网格最低点落在 y=0。
+        /// 参见 TryMeshExtentY 的注释 —— 测量方式换了三轮才找对。
         /// </summary>
         static void AlignFeetToOrigin(GameObject root)
         {
-            float lowest = float.MaxValue;
-            float highest = float.MinValue;
-            int sampled = 0;
-
-            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-            {
-                if (smr.sharedMesh == null) continue;
-
-                var baked = new Mesh();
-                try
-                {
-                    // BakeMesh 输出当前姿态下的顶点，坐标在 smr 自身空间
-                    smr.BakeMesh(baked, true);
-                    var verts = baked.vertices;
-                    for (int i = 0; i < verts.Length; i++)
-                    {
-                        var wp = smr.transform.TransformPoint(verts[i]);
-                        float y = root.transform.InverseTransformPoint(wp).y;
-                        if (y < lowest) lowest = y;
-                        if (y > highest) highest = y;
-                        sampled++;
-                    }
-                }
-                finally
-                {
-                    Object.DestroyImmediate(baked);
-                }
-            }
-
-            // 没有蒙皮网格就退回普通 MeshRenderer 的顶点
-            if (sampled == 0)
-            {
-                foreach (var mf in root.GetComponentsInChildren<MeshFilter>(true))
-                {
-                    if (mf.sharedMesh == null) continue;
-                    var verts = mf.sharedMesh.vertices;
-                    for (int i = 0; i < verts.Length; i++)
-                    {
-                        var wp = mf.transform.TransformPoint(verts[i]);
-                        float y = root.transform.InverseTransformPoint(wp).y;
-                        if (y < lowest) lowest = y;
-                        if (y > highest) highest = y;
-                        sampled++;
-                    }
-                }
-            }
-
-            if (sampled == 0)
+            if (!TryMeshExtentY(root, out float minY, out float maxY))
             {
                 Debug.LogWarning($"[SCP] {root.name} 找不到任何网格，无法对齐地面");
                 return;
             }
 
-            // 记录实际身高，供 ComputeScale 用（写进临时组件读不到，改为返回值太侵入，
-            // 所以 ComputeScale 也用同一套 BakeMesh 逻辑）
-            float shift = -lowest;
-            if (Mathf.Abs(shift) > 1e-5f)
+            float shift = -minY;
+            if (Mathf.Abs(shift) > 1e-4f)
             {
                 for (int i = 0; i < root.transform.childCount; i++)
                 {
@@ -719,56 +728,8 @@ namespace BugParty.TopDown2D.EditorTools
                 }
             }
 
-            Debug.Log($"[SCP] {root.name} 网格 y 范围 [{lowest:F4}, {highest:F4}]" +
-                      $"（{sampled} 顶点）→ 上移 {shift:F4}，高度 {highest - lowest:F4}");
-        }
-
-        /// <summary>
-        /// 取模型在自身局部空间的实际网格高度（BakeMesh 顶点范围）。
-        /// AlignFeetToOrigin 与 ComputeScale 共用，避免两处算法不一致。
-        /// </summary>
-        static bool TryMeshExtentY(GameObject root, out float minY, out float maxY)
-        {
-            minY = float.MaxValue; maxY = float.MinValue;
-            int n = 0;
-
-            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-            {
-                if (smr.sharedMesh == null) continue;
-                var baked = new Mesh();
-                try
-                {
-                    smr.BakeMesh(baked, true);
-                    var verts = baked.vertices;
-                    for (int i = 0; i < verts.Length; i++)
-                    {
-                        var wp = smr.transform.TransformPoint(verts[i]);
-                        float y = root.transform.InverseTransformPoint(wp).y;
-                        if (y < minY) minY = y;
-                        if (y > maxY) maxY = y;
-                        n++;
-                    }
-                }
-                finally { Object.DestroyImmediate(baked); }
-            }
-
-            if (n == 0)
-            {
-                foreach (var mf in root.GetComponentsInChildren<MeshFilter>(true))
-                {
-                    if (mf.sharedMesh == null) continue;
-                    var verts = mf.sharedMesh.vertices;
-                    for (int i = 0; i < verts.Length; i++)
-                    {
-                        var wp = mf.transform.TransformPoint(verts[i]);
-                        float y = root.transform.InverseTransformPoint(wp).y;
-                        if (y < minY) minY = y;
-                        if (y > maxY) maxY = y;
-                        n++;
-                    }
-                }
-            }
-            return n > 0;
+            Debug.Log($"[SCP] {root.name} 网格 y 范围 [{minY:F4}, {maxY:F4}] " +
+                      $"→ 上移 {shift:F4}，高度 {maxY - minY:F4}");
         }
 
         // ══════════════════════════════════════════════

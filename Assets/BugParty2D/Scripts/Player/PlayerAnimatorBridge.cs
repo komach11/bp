@@ -40,6 +40,14 @@ namespace BugParty.TopDown2D
         [Tooltip("角色模型上的 Animator。留空会自动在子物体里找。")]
         public Animator animator;
 
+        [Tooltip("★动作映射表。选中玩家后可以直接点开它换动作 ——\n" +
+                 "闲置/搜索/跑步/肘击 等槽位都在里面。\n\n" +
+                 "改完 clip 后执行菜单「BugParty2D ▸ 重建角色动画」即可生效，\n" +
+                 "不需要重新建场（Prefab 引用的是同一个 Controller 资产）。\n\n" +
+                 "这个字段只是给你一个入口，运行时不读它 —— 动作由 Animator 的\n" +
+                 "Controller 决定。")]
+        public CharacterAnimSet animSet;
+
         [Header("调参")]
         [Tooltip("跑步动画对应的速度上限，用于把速度归一化到 0~1。\n" +
                  "填 0 则直接输出原始速度（适合 Blend Tree 用真实速度做阈值）。")]
