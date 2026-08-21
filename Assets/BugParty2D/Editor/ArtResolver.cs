@@ -80,11 +80,28 @@ namespace BugParty.TopDown2D
 
             t.localScale = Vector3.one * scale;
 
-            // 重新取缩放后的包围盒，把 XZ 居中、底面贴到 y=0
-            if (TryGetLocalBounds(t, out var b2))
+            if (slot.fitToSize)
             {
-                var offset = new Vector3(-b2.center.x, -b2.min.y, -b2.center.z);
-                t.localPosition += offset + new Vector3(0f, slot.yOffset, 0f);
+                // 重新取缩放后的包围盒，把 XZ 居中、底面贴到 y=0
+                if (TryGetLocalBounds(t, out var b2))
+                {
+                    var offset = new Vector3(-b2.center.x, -b2.min.y, -b2.center.z);
+                    t.localPosition += offset + new Vector3(0f, slot.yOffset, 0f);
+                }
+            }
+            else
+            {
+                // ★fitToSize = false 表示「Prefab 里已经摆好了」—— 只应用 yOffset，
+                //   绝不再用包围盒重定位。
+                //
+                //   这一分支是为骨骼动画角色加的。SkinnedMeshRenderer.bounds 是 T-pose
+                //   下预计算的静态 AABB，与真实骨骼位置能差出半米：实测 Bear 的
+                //   bounds.min.y = -0.680，而脚骨（foot.L/R）其实在 +0.847。
+                //   用它把「底面贴到 y=0」等于把角色整体抬高 0.68 —— 悬空就是这么来的。
+                //
+                //   带骨骼的 Prefab 由 SCPCharacterSetup.AlignFeetToOrigin 按
+                //   toe/heel/foot 骨骼预先对齐过，这里保持原样才正确。
+                t.localPosition += new Vector3(0f, slot.yOffset, 0f);
             }
         }
 

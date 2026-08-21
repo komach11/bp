@@ -22,8 +22,10 @@ namespace BugParty.TopDown2D
         [Tooltip("垂直微调。模型脚底不在 y=0 时用它补偿。")]
         public float yOffset = 0f;
 
-        [Tooltip("勾选后按包围盒把模型等比缩放到目标尺寸；\n" +
-                 "取消则保持模型原始大小，只做位置对齐。")]
+        [Tooltip("勾选后按渲染包围盒把模型等比缩放并把底面贴到 y=0（适合静态家具）。\n\n" +
+                 "★带骨骼动画的角色务必取消勾选 —— SkinnedMeshRenderer 的包围盒是\n" +
+                 "T-pose 下的静态 AABB，与真实骨骼位置能差出半米，用它对齐会让角色悬空。\n" +
+                 "取消后只应用 scaleMul 与 yOffset，位置以 Prefab 内的摆放为准。")]
         public bool fitToSize = true;
 
         public bool HasArt => prefab != null;
